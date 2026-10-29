@@ -251,6 +251,40 @@
     }
     #toast.show { opacity: 1; }
     code { font-size: 13px; }
+
+    /* Resep, paket, dan saran harga */
+    .warn { color: var(--warn); }
+    .err { color: var(--danger); }
+    .ok { color: var(--ok); }
+    .tag {
+      display: inline-block; vertical-align: 2px; margin-left: 4px; padding: 1px 8px; border-radius: 999px;
+      background: var(--well); box-shadow: var(--inset-sm); color: var(--muted);
+      font-family: var(--f); font-size: 11px; font-weight: 700; letter-spacing: .3px;
+    }
+    .aksi { display: flex; gap: 8px; flex: 0 0 auto; }
+    .peringatan { border-left: 6px solid var(--yellow); margin-top: 14px; }
+    .baris { display: grid; grid-template-columns: minmax(0, 1fr) 68px 34px 32px; gap: 8px; align-items: center; }
+    .baris + .baris { margin-top: 8px; }
+    .baris .hapus {
+      width: 36px; height: 36px; border: 0; border-radius: 50%; cursor: pointer;
+      background: var(--cell); box-shadow: var(--raised-sm); color: var(--danger); font-size: 20px; font-weight: 700;
+    }
+    .seg.kecil { margin-bottom: 0; }
+    .field.sempit { width: 110px; }
+    .baris .unit { overflow: hidden; text-overflow: ellipsis; }
+    .baris select, .baris input { padding: 10px 10px; }
+    .baris .hapus { width: 32px; height: 32px; }
+    .field.sempit > span { margin-bottom: 4px; }
+    .pilihan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .pilih {
+      display: grid; gap: 2px; text-align: center; border: 0; border-radius: 18px; padding: 10px 6px; cursor: pointer;
+      background: var(--cell); color: var(--fg); box-shadow: var(--raised-sm);
+    }
+    .pilih b { font-family: var(--f-display); font-weight: 800; font-size: 16px; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+    .pilih[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }
+    .pilih[aria-pressed="true"] b { color: var(--on-primary); }
+    .dampak { padding: 14px 0; }
+    img.struk { display: block; width: 100%; max-width: 360px; margin: 0 auto; border-radius: 16px; box-shadow: var(--raised-sm); }
   </style>
 </head>
 <body>
@@ -292,6 +326,7 @@
   <script src="vendor/supabase-2.45.4.js"></script>
   <script src="js/config.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/hitung.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 </body>

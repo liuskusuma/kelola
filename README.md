@@ -5,9 +5,15 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 
 ## Fitur
 
-- **Produk + kalkulator harga jual.** Masukkan modal per satuan dan target margin, Kelola menyarankan harga jual (dibulatkan ke Rp500) dan menunjukkan laba per satuan.
-- **Kasir.** Ketuk produk untuk menambah ke keranjang, isi uang diterima, kembalian dihitung otomatis. Stok berkurang sendiri.
-- **Laporan.** Omzet, laba kotor, jumlah transaksi, margin rata-rata, produk terlaris, dan riwayat penjualan (hari ini, 7 hari, bulan ini, semua).
+- **Produk + kalkulator harga jual.** Modal per satuan bisa diisi sendiri, dihitung dari resep, atau dari isi paket. Kelola memberi tiga saran harga jual (hemat, standar, premium) dari target margin, dibulatkan ke Rp500.
+- **Bahan baku dan resep.** Catat bahan dengan harga beli per kemasan (misalnya gula Rp18.000 per 1.000 gram). Resep berisi bahan, jumlah yang dipakai, hasil jadi, dan biaya lain seperti gas atau kemasan. Modal per porsi dihitung otomatis.
+- **Peringatan harga bahan.** Kalau harga bahan diubah, Kelola menunjukkan produk yang modalnya ikut berubah dan menyarankan harga jual baru yang menjaga margin lama.
+- **Paket.** Gabungkan beberapa produk jadi satu harga; modalnya jumlah modal isinya.
+- **Stok otomatis.** Produk yang stoknya dihitung berkurang saat terjual. Produk resep tanpa stok (dibuat saat dipesan) mengurangi stok bahannya. Tombol **Produksi** menambah stok produk jadi dan mengurangi bahan.
+- **Kasir.** Ketuk produk untuk menambah ke keranjang, isi uang diterima, kembalian dihitung otomatis.
+- **Struk untuk WhatsApp.** Setiap penjualan bisa dibuatkan struk bergambar untuk dikirim lewat WhatsApp, disimpan sebagai gambar, atau dikirim sebagai teks.
+- **Laporan.** Omzet, laba kotor, pengeluaran, laba bersih, jumlah transaksi, margin rata-rata, produk terlaris, dan riwayat penjualan (hari ini, 7 hari, bulan ini, semua).
+- **Pengeluaran.** Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.
 - **Login + simpan ke cloud.** Masuk dengan email dan kata sandi supaya data tidak hilang dan bisa dibuka di beberapa perangkat.
 
 ## Cara kerja penyimpanan
@@ -43,6 +49,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 |---|---|
 | `index.html` | Tampilan dan gaya |
 | `js/app.js` | Layar Kasir, Produk, Laporan, Akun, serta login |
+| `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
 | `js/store.js` | Penyimpanan lokal (localStorage) |
 | `js/sync.js` | Sinkronisasi dengan cloud |
 | `js/config.js` | Alamat dan kunci Supabase |
@@ -54,7 +61,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 ## Pengujian
 
 ```sh
-node --test                       # logika sinkronisasi
+node --test                       # logika sinkronisasi dan rumus HPP
 python3 -m http.server 8765 &     # lalu, dengan Playwright terpasang:
 node tests/e2e.js                 # dua perangkat + Supabase tiruan di browser
 ```

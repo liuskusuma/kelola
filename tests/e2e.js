@@ -73,8 +73,10 @@ async function device(browser) {
   await p.fill('input[name=nama]', 'Keripik pedas');
   await p.fill('input[name=modal]', '6000');
   await p.fill('input[name=target]', '40');
-  assert.equal(norm(await p.textContent('#saran')), 'Rp 10.000');
-  await p.click('text=Pakai harga ini');
+  assert.equal(norm(await p.innerText('#pilihan')).replace(/\s+/g, ' ').trim(),
+    'Hemat 30% Rp 9.000 Standar 40% Rp 10.000 Premium 55% Rp 13.500');
+  await p.click('.pilih >> nth=1');
+  assert.equal(await p.inputValue('input[name=harga]'), '10000');
   await p.fill('input[name=stok]', '20');
   await p.click('#formProduk button.primary');
 
@@ -148,6 +150,89 @@ async function device(browser) {
   await l.waitForSelector('#formAuth');
   await l.click('nav >> text=Produk');
   assert.ok((norm(await l.textContent('main'))).includes('Belum ada produk'));
+
+  // 9. Bahan baku dan resep: modal dihitung dari bahan.
+  const tambahBahan = async (nama, isi, harga, stok) => {
+    await p.click('main >> text=+ Tambah bahan');
+    await p.fill('#formBahan input[name=nama]', nama);
+    await p.fill('#formBahan input[name=isi]', String(isi));
+    await p.fill('#formBahan input[name=harga]', String(harga));
+    if (stok != null) await p.fill('#formBahan input[name=stok]', String(stok));
+    await p.click('#formBahan button.primary');
+  };
+  await p.click('nav >> text=Produk');
+  await p.click('.seg >> text=Bahan baku');
+  await tambahBahan('Gula', 1000, 18000, 5000);
+  await tambahBahan('Kopi bubuk', 250, 25000);
+  assert.ok(norm(await p.textContent('main')).includes('Rp 18 per gram'));
+  await p.click('.seg >> text=Produk');
+  await p.click('text=+ Tambah produk');
+  await p.fill('input[name=nama]', 'Es kopi');
+  await p.click('dialog >> text=Dari resep');
+  await p.selectOption('[data-baris=resep] >> nth=0 >> select', { label: 'Kopi bubuk' });
+  await p.fill('[data-baris=resep] >> nth=0 >> input', '15');
+  await p.click('dialog >> text=+ Tambah bahan');
+  await p.selectOption('[data-baris=resep] >> nth=1 >> select', { label: 'Gula' });
+  await p.fill('[data-baris=resep] >> nth=1 >> input', '20');
+  await p.fill('input[name=biayaLain]', '1500');
+  assert.equal(norm(await p.textContent('#hpp')), 'Rp 3.360');
+  await p.click('.pilih >> nth=1'); // standar 30% → Rp 5.000
+  await p.click('#formProduk button.primary');
+  assert.ok(norm(await p.textContent('main')).includes('Modal Rp 3.360 · jual Rp 5.000'));
+
+  // 10. Paket: modal = jumlah modal isinya.
+  await p.click('text=+ Tambah produk');
+  await p.fill('input[name=nama]', 'Paket ngopi');
+  await p.click('dialog [data-m=paket]');
+  await p.selectOption('[data-baris=paket] >> nth=0 >> select', { label: 'Keripik pedas' });
+  await p.fill('[data-baris=paket] >> nth=0 >> input', '2');
+  await p.click('dialog >> text=+ Tambah produk');
+  await p.selectOption('[data-baris=paket] >> nth=1 >> select', { label: 'Es kopi' });
+  assert.equal(norm(await p.textContent('#hpp')), 'Rp 15.360');
+  await p.fill('input[name=harga]', '25000');
+  await p.click('#formProduk button.primary');
+
+  // 11. Jual es kopi ×2 dan paket ×1: stok gula & keripik berkurang, struk bisa dibuat.
+  await p.click('nav >> text=Kasir');
+  await p.click('.tile:has-text("Es kopi")');
+  await p.click('.tile:has-text("Es kopi")');
+  await p.click('.tile:has-text("Paket ngopi")');
+  await p.click('text=Simpan penjualan');
+  await p.click('#trxTerakhir button');
+  await p.waitForSelector('#strukGambar');
+  assert.ok(await p.evaluate(() => document.querySelector('#strukGambar').naturalWidth === 600 || new Promise((ok) => document.querySelector('#strukGambar').onload = () => ok(true))));
+  await p.click('dialog >> text=Tutup');
+  await p.click('nav >> text=Produk');
+  assert.ok(norm(await p.textContent('main')).includes('stok 14'), 'keripik 16 - 2');
+  await p.click('.seg >> text=Bahan baku');
+  assert.ok(norm(await p.textContent('main')).includes('stok 4.940 gram'), norm(await p.textContent('main')));
+
+  // 12. Harga gula naik: Kelola menunjukkan produk terdampak dan saran harga baru.
+  await p.click('li:has-text("Gula") >> text=Ubah');
+  await p.fill('#formBahan input[name=harga]', '36000');
+  await p.click('#formBahan button.primary');
+  await p.waitForSelector('text=Cek harga jual');
+  const dampak = norm(await p.textContent('dialog'));
+  assert.ok(dampak.includes('Es kopi') && dampak.includes('Rp 3.360 → Rp 3.720'), dampak);
+  await p.click('dialog li:has-text("Es kopi") >> text=Jual Rp 6.000');
+  await p.click('dialog li:has-text("Paket ngopi") >> text=Harga tetap');
+  assert.equal(await p.evaluate(() => document.querySelector('#dialog').open), false);
+  await p.click('.seg >> text=Produk');
+  assert.ok(norm(await p.textContent('main')).includes('Modal Rp 3.720 · jual Rp 6.000'));
+  assert.ok(!norm(await p.textContent('main')).includes('Harga bahan berubah'));
+
+  // 13. Pengeluaran mengurangi laba bersih.
+  await p.click('nav >> text=Laporan');
+  const angkaDi = async (sel) => Number(norm(await p.textContent(sel + ' .value')).replace(/[^0-9-]/g, ''));
+  await p.click('text=+ Catat pengeluaran');
+  await p.fill('#formPengeluaran input[name=jumlah]', '10000');
+  await p.selectOption('#formPengeluaran select', 'Listrik & air');
+  await p.click('#formPengeluaran button.primary');
+  const kotor = await angkaDi('.stat:has-text("Laba kotor")');
+  assert.equal(await angkaDi('.stat:has-text("Pengeluaran")'), 10000);
+  assert.equal(await angkaDi('#labaBersih'), kotor - 10000);
+  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
+  assert.ok([...rows.values()].some((r) => r.kind === 'bahan') && [...rows.values()].some((r) => r.kind === 'pengeluaran'));
 
   assert.deepEqual(hp.errors.concat(laptop.errors), []);
   await browser.close();
