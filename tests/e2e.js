@@ -234,6 +234,42 @@ async function device(browser) {
   await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
   assert.ok([...rows.values()].some((r) => r.kind === 'bahan') && [...rows.values()].some((r) => r.kind === 'pengeluaran'));
 
+  // 14. Foto produk dari galeri: diperkecil, tampil di kasir, ikut ke cloud.
+  const gambar = await p.screenshot({ clip: { x: 0, y: 0, width: 800 / 2, height: 300 } });
+  await p.click('nav >> text=Produk');
+  await p.click('li:has-text("Es kopi") >> text=Ubah');
+  await p.setInputFiles('#fotoGaleri', { name: 'kopi.png', mimeType: 'image/png', buffer: gambar });
+  await p.waitForSelector('#fotoPratinjau');
+  await p.click('#formProduk button.primary');
+  const foto = await p.evaluate(() => Kelola.store.list('produk').find((r) => r.data.nama === 'Es kopi').data.foto);
+  assert.ok(foto.startsWith('data:image/jpeg') && foto.length < 60000, String(foto.length));
+  await p.click('nav >> text=Kasir');
+  assert.equal(await p.locator('.tile:has-text("Es kopi") img.foto').count(), 1);
+  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
+  assert.ok([...rows.values()].some((r) => r.data.foto === foto));
+
+  // 15. Tampilan bawaan tetap terang walau HP memakai mode gelap; bisa diganti di Akun.
+  await p.emulateMedia({ colorScheme: 'dark' });
+  const latar = () => p.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  assert.equal(await latar(), 'rgb(242, 245, 250)');
+  await p.click('nav >> text=Akun');
+  await p.click('#pengaturan >> text=Gelap');
+  assert.equal(await latar(), 'rgb(20, 35, 79)');
+  await p.click('#pengaturan >> text=Ikuti HP');
+  assert.equal(await latar(), 'rgb(20, 35, 79)');
+  await p.click('#pengaturan >> text=Terang');
+  assert.equal(await latar(), 'rgb(242, 245, 250)');
+
+  // 16. Bahasa Inggris, tetap terpilih setelah dibuka ulang.
+  await p.click('#pengaturan >> text=English');
+  assert.equal(await p.textContent('#judul'), 'Account');
+  await p.reload();
+  await p.click('nav >> text=Reports');
+  assert.ok(norm(await p.textContent('main')).includes('Net profit'));
+  await p.click('nav >> text=Account');
+  await p.click('#pengaturan >> text=Bahasa Indonesia');
+  assert.equal(await p.textContent('#judul'), 'Akun');
+
   assert.deepEqual(hp.errors.concat(laptop.errors), []);
   await browser.close();
   console.log('E2E OK');
