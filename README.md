@@ -14,6 +14,8 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Struk untuk WhatsApp.** Setiap penjualan bisa dibuatkan struk bergambar untuk dikirim lewat WhatsApp, disimpan sebagai gambar, atau dikirim sebagai teks.
 - **Laporan.** Omzet, laba kotor, pengeluaran, laba bersih, jumlah transaksi, margin rata-rata, produk terlaris, dan riwayat penjualan (hari ini, 7 hari, bulan ini, semua).
 - **Pengeluaran.** Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.
+- **Foto produk.** Ambil langsung dari kamera atau pilih dari galeri. Foto diperkecil otomatis supaya ringan, lalu tampil di kasir dan daftar produk.
+- **Bahasa dan tampilan.** Di tab Akun bisa memilih Bahasa Indonesia atau English, dan tampilan Terang (bawaan), Gelap, atau Ikuti HP. Pilihan ini disimpan per perangkat.
 - **Login + simpan ke cloud.** Masuk dengan email dan kata sandi supaya data tidak hilang dan bisa dibuka di beberapa perangkat.
 
 ## Cara kerja penyimpanan
@@ -50,6 +52,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `index.html` | Tampilan dan gaya |
 | `js/app.js` | Layar Kasir, Produk, Laporan, Akun, serta login |
 | `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
+| `js/bahasa.js` | Terjemahan Inggris dan pengaturan bahasa/tampilan per perangkat |
 | `js/store.js` | Penyimpanan lokal (localStorage) |
 | `js/sync.js` | Sinkronisasi dengan cloud |
 | `js/config.js` | Alamat dan kunci Supabase |
@@ -61,7 +64,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 ## Pengujian
 
 ```sh
-node --test                       # logika sinkronisasi dan rumus HPP
+node --test                       # logika sinkronisasi, rumus HPP, dan terjemahan
 python3 -m http.server 8765 &     # lalu, dengan Playwright terpasang:
 node tests/e2e.js                 # dua perangkat + Supabase tiruan di browser
 ```

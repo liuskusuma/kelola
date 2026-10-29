@@ -1,0 +1,300 @@
+// Bahasa dan pengaturan tampilan Kelola.
+// Teks di kode ditulis dalam Bahasa Indonesia dan dipakai sebagai kunci;
+// kamus di bawah berisi terjemahan Inggrisnya. Kalau terjemahan tidak ada,
+// teks Indonesia yang tampil. `{nama}` di dalam teks diganti dengan nilainya.
+(function (root) {
+  'use strict';
+
+  const KEY = 'kelola:pengaturan';
+  const BAWAAN = { bahasa: 'id', tema: 'terang' };
+
+  const EN = {
+    // Menu dan judul
+    'Kasir': 'Cashier',
+    'Produk': 'Products',
+    'Laporan': 'Reports',
+    'Akun': 'Account',
+    'Menu utama': 'Main menu',
+    'Catat penjualan': 'Record sales',
+    'Harga jual, resep & stok': 'Prices, recipes & stock',
+    'Omzet, pengeluaran & laba': 'Sales, expenses & profit',
+    'Profil, pengaturan & cloud': 'Profile, settings & cloud',
+
+    // Status sinkron
+    'Lokal': 'Local',
+    'Data hanya tersimpan di perangkat ini. Masuk untuk menyimpan ke cloud.': 'Data is only saved on this device. Sign in to save it to the cloud.',
+    '{n} perubahan belum terkirim': '{n} changes not sent yet',
+    'Offline': 'Offline',
+    'Tidak ada koneksi': 'No connection',
+    'Sinkron…': 'Syncing…',
+    'Menyinkronkan': 'Syncing',
+    'Gagal': 'Failed',
+    'Gagal sinkron': 'Sync failed',
+    '{n} tertunda': '{n} pending',
+    'Tersimpan': 'Saved',
+    'Semua data tersimpan di cloud': 'All data is saved in the cloud',
+
+    // Kasir
+    'Keranjang · {n} item': 'Cart · {n} items',
+    'Mulai berjualan': 'Start selling',
+    'Belum ada produk. Tambahkan produk dulu, lalu ketuk produk di sini setiap kali ada pembeli.': 'No products yet. Add a product first, then tap it here every time someone buys.',
+    'Tambah produk pertama': 'Add your first product',
+    'Stok': 'Stock',
+    'Penjualan {total} tersimpan': 'Sale of {total} saved',
+    'Kirim struk ke pembeli lewat WhatsApp.': 'Send the receipt to the buyer on WhatsApp.',
+    'Struk': 'Receipt',
+    'Keranjang': 'Cart',
+    'Kurangi': 'Decrease',
+    'Tambah': 'Increase',
+    'Total': 'Total',
+    'Uang diterima': 'Cash received',
+    'Kembalian': 'Change',
+    'Kosongkan': 'Clear',
+    'Simpan penjualan': 'Save sale',
+    'Ketuk produk untuk menambahkannya ke keranjang.': 'Tap a product to add it to the cart.',
+
+    // Produk
+    'Bahan baku': 'Ingredients',
+    'Harga bahan berubah': 'Ingredient prices changed',
+    'Modal {n} produk ikut berubah. Cek apakah harga jualnya masih menguntungkan.': 'The cost of {n} products changed too. Check that their prices still make a profit.',
+    'Cek harga jual': 'Check prices',
+    'stok': 'stock',
+    'Resep': 'Recipe',
+    'Paket': 'Bundle',
+    'Modal naik dari {x}': 'Cost went up from {x}',
+    'Modal turun dari {x}': 'Cost went down from {x}',
+    'Harga jual di bawah modal!': 'Price is below cost!',
+    'Produksi': 'Produce',
+    'Modal {modal} · jual {harga} · laba {laba} ({m}%)': 'Cost {modal} · price {harga} · profit {laba} ({m}%)',
+    'Ubah': 'Edit',
+    'Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.': 'No products yet. Add a product to work out its price and start selling.',
+    'Daftar produk': 'Product list',
+    '+ Tambah produk': '+ Add product',
+    'Modal bisa diisi sendiri, dihitung dari resep bahan baku, atau dari isi paket. Harga jual disarankan dari target margin.': 'Cost can be typed in, worked out from a recipe, or from what is in a bundle. Prices are suggested from your target margin.',
+    'Stok habis': 'Out of stock',
+    'per': 'per',
+    'Belum ada bahan baku. Catat bahan dan harga belinya supaya modal produk dihitung otomatis dari resep.': 'No ingredients yet. Add ingredients and what you pay for them so product costs are worked out from recipes.',
+    '+ Tambah bahan': '+ Add ingredient',
+    'Kalau harga bahan naik, ubah harganya di sini. Kelola akan menunjukkan produk mana yang modalnya ikut naik.': 'When an ingredient gets more expensive, update its price here. Kelola will show which products cost more to make.',
+
+    // Laporan
+    'Hari ini': 'Today',
+    '7 hari': '7 days',
+    'Bulan ini': 'This month',
+    'Semua': 'All',
+    'Periode': 'Period',
+    'Omzet': 'Sales',
+    'Laba kotor': 'Gross profit',
+    'Pengeluaran': 'Expenses',
+    'Laba bersih': 'Net profit',
+    'Transaksi': 'Sales count',
+    'Margin rata-rata': 'Average margin',
+    'Laba kotor = omzet dikurangi modal barang yang terjual. Laba bersih = laba kotor dikurangi pengeluaran.': 'Gross profit = sales minus the cost of what was sold. Net profit = gross profit minus expenses.',
+    'Produk terlaris': 'Best sellers',
+    '{n} terjual': '{n} sold',
+    'Belum ada penjualan di periode ini.': 'No sales in this period yet.',
+    '+ Catat pengeluaran': '+ Add expense',
+    'Belum ada pengeluaran di periode ini. Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.': 'No expenses in this period. Record costs like rent, electricity, or wages to see your net profit.',
+    'Riwayat penjualan': 'Sales history',
+    'laba': 'profit',
+    'Batalkan': 'Cancel sale',
+    'Belum ada penjualan.': 'No sales yet.',
+    'Sewa tempat': 'Rent',
+    'Listrik & air': 'Electricity & water',
+    'Gaji': 'Wages',
+    'Transportasi': 'Transport',
+    'Iklan & promosi': 'Ads & promotion',
+    'Peralatan': 'Equipment',
+    'Lainnya': 'Other',
+
+    // Akun dan pengaturan
+    'Profil usaha': 'Business profile',
+    'Nama usaha': 'Business name',
+    'Contoh: Warung Bu Sari': 'Example: Sari\'s Kitchen',
+    'Alamat atau nomor WhatsApp (tampil di struk)': 'Address or WhatsApp number (shown on receipts)',
+    'Contoh: Jl. Melati 5 · 0812 3456 7890': 'Example: Jl. Melati 5 · 0812 3456 7890',
+    'Simpan': 'Save',
+    'Pengaturan': 'Settings',
+    'Bahasa': 'Language',
+    'Tampilan': 'Appearance',
+    'Terang': 'Light',
+    'Gelap': 'Dark',
+    'Ikuti HP': 'Match phone',
+    'Profil tersimpan': 'Profile saved',
+
+    // Cloud dan login
+    'Simpan ke cloud': 'Save to the cloud',
+    'Sinkronisasi cloud belum diaktifkan di aplikasi ini, jadi data hanya tersimpan di perangkat ini.': 'Cloud sync is not turned on in this app, so data is only saved on this device.',
+    'Pemilik aplikasi perlu mengisi js/config.js (lihat README).': 'The app owner needs to fill in js/config.js (see the README).',
+    'Buat kata sandi baru': 'Create a new password',
+    'Kata sandi baru': 'New password',
+    'Simpan kata sandi': 'Save password',
+    'belum': 'not yet',
+    'Gagal sinkron: {pesan}. Data tetap aman di perangkat ini dan akan dikirim ulang.': 'Sync failed: {pesan}. Your data is safe on this device and will be sent again.',
+    'Masuk sebagai': 'Signed in as',
+    'Sinkron terakhir: {waktu}': 'Last synced: {waktu}',
+    'semua data sudah terkirim': 'all data sent',
+    'Sinkronkan sekarang': 'Sync now',
+    'Keluar': 'Sign out',
+    'Masuk dengan akun yang sama di HP, tablet, atau laptop lain untuk melihat data yang sama.': 'Sign in with the same account on another phone, tablet, or laptop to see the same data.',
+    'Buat akun': 'Create account',
+    'Lupa kata sandi': 'Forgot password',
+    'Masuk': 'Sign in',
+    'Kata sandi': 'Password',
+    'Daftar': 'Sign up',
+    'Kirim tautan reset': 'Send reset link',
+    'Data yang sudah ada di perangkat ini akan ikut tersimpan ke akun Anda setelah masuk.': 'Data already on this device will be saved to your account after you sign in.',
+    'Masuk supaya data tidak hilang saat HP rusak atau ganti perangkat, dan bisa dibuka di beberapa perangkat sekaligus.': 'Sign in so your data is not lost if your phone breaks or you switch devices, and so you can use it on several devices.',
+    'Email': 'Email',
+    'Sudah punya akun? Masuk': 'Have an account? Sign in',
+    'Belum punya akun? Daftar': 'No account yet? Sign up',
+    'Lupa kata sandi?': 'Forgot password?',
+    'Kata sandi baru tersimpan.': 'New password saved.',
+    'Email atau kata sandi salah.': 'Wrong email or password.',
+    'Email belum dikonfirmasi. Buka email dari Kelola dan klik tautan konfirmasi.': 'Email not confirmed yet. Open the email from Kelola and tap the confirmation link.',
+    'Email ini sudah terdaftar. Silakan masuk.': 'This email is already registered. Please sign in.',
+    'Kata sandi minimal 6 karakter.': 'Password must be at least 6 characters.',
+    'Tidak ada koneksi internet. Coba lagi nanti.': 'No internet connection. Try again later.',
+    'Hampir selesai. Kami mengirim email konfirmasi ke {email}. Klik tautannya, lalu masuk di sini.': 'Almost done. We sent a confirmation email to {email}. Tap the link, then sign in here.',
+    'Tautan untuk membuat kata sandi baru sudah dikirim ke {email}.': 'A link to create a new password was sent to {email}.',
+    'Masih ada {n} perubahan yang belum terkirim ke cloud dan akan hilang jika Anda keluar sekarang. Tetap keluar?': '{n} changes have not been sent to the cloud and will be lost if you sign out now. Sign out anyway?',
+    'Keluar dari akun? Data di perangkat ini akan dihapus, tapi tetap aman di cloud.': 'Sign out? Data on this device will be removed, but it stays safe in the cloud.',
+    'Anda sudah keluar.': 'You are signed out.',
+    'Tidak ada koneksi internet': 'No internet connection',
+    'Data sudah sinkron': 'Data is in sync',
+
+    // Form produk
+    '(bahan sudah dihapus)': '(ingredient deleted)',
+    'Bahan': 'Ingredient',
+    'Jumlah': 'Amount',
+    'Jumlah dipakai': 'Amount used',
+    'Hapus baris': 'Remove row',
+    'Stok produk jadi (kosongkan kalau dibuat saat dipesan)': 'Ready-made stock (leave empty if made to order)',
+    'Stok (kosongkan jika tidak dihitung)': 'Stock (leave empty if not tracked)',
+    'Isi sendiri': 'Type it in',
+    'Dari resep': 'From recipe',
+    'Ubah produk': 'Edit product',
+    'Produk baru': 'New product',
+    'Tutup': 'Close',
+    'Foto produk (boleh kosong)': 'Product photo (optional)',
+    'Nama produk': 'Product name',
+    'Contoh: Keripik pedas 100 g': 'Example: Spicy chips 100 g',
+    'Satuan jual': 'Selling unit',
+    'pcs, porsi, gelas': 'pcs, portion, glass',
+    'Modal per satuan': 'Cost per unit',
+    'Modal per satuan (Rp)': 'Cost per unit (Rp)',
+    'Resep satu adonan': 'Recipe for one batch',
+    'Belum ada bahan baku.': 'No ingredients yet.',
+    'Tambah bahan dulu': 'Add ingredients first',
+    'Pilih bahan dan jumlah yang dipakai, dalam satuan bahan (mis. gram).': 'Choose ingredients and the amount used, in the ingredient\'s unit (e.g. grams).',
+    'Hasil jadi': 'Makes',
+    'Biaya lain (Rp)': 'Other costs (Rp)',
+    'Gas, kemasan': 'Gas, packaging',
+    'Isi paket': 'Bundle contents',
+    'Gabungkan beberapa produk jadi satu harga. Modal paket = jumlah modal isinya.': 'Sell several products for one price. Bundle cost = the cost of what is inside.',
+    'Saran harga jual': 'Suggested price',
+    'Margin (%)': 'Margin (%)',
+    'Harga jual (Rp)': 'Selling price (Rp)',
+    'Hapus': 'Delete',
+    'Ambil foto': 'Take photo',
+    'Pilih dari galeri': 'Choose from gallery',
+    'Hapus foto': 'Remove photo',
+    'Foto tidak bisa dibuka. Coba foto lain.': 'This photo could not be opened. Try another one.',
+    'Hemat': 'Budget',
+    'Standar': 'Standard',
+    'Premium': 'Premium',
+    'Isi modal dulu untuk melihat saran harga.': 'Enter the cost first to see suggested prices.',
+    'Laba per satuan {laba} · margin {m}%': 'Profit per unit {laba} · margin {m}%',
+    'harga di bawah modal!': 'price is below cost!',
+    'Tambahkan minimal satu bahan ke resep': 'Add at least one ingredient to the recipe',
+    'Tambahkan minimal satu produk ke paket': 'Add at least one product to the bundle',
+    'Produk tersimpan': 'Product saved',
+    'Hapus produk ini? Riwayat penjualan tetap tersimpan.': 'Delete this product? Sales history is kept.',
+
+    // Form bahan
+    'Ubah bahan': 'Edit ingredient',
+    'Bahan baru': 'New ingredient',
+    'Nama bahan': 'Ingredient name',
+    'Contoh: Gula pasir': 'Example: Sugar',
+    'Satuan pakai': 'Unit used',
+    'gram, ml, butir': 'gram, ml, piece',
+    'Isi per kemasan': 'Amount per pack',
+    'Harga beli per kemasan (Rp)': 'Price per pack (Rp)',
+    'Harga per {satuan}: {harga}': 'Price per {satuan}: {harga}',
+    'satuan': 'unit',
+    'Bahan tersimpan': 'Ingredient saved',
+    'Bahan ini dipakai di resep {daftar}. Kalau dihapus, modal produk itu tidak lagi menghitung bahan ini. Tetap hapus?': 'This ingredient is used in {daftar}. If you delete it, those product costs will no longer include it. Delete anyway?',
+    'Hapus bahan ini?': 'Delete this ingredient?',
+
+    // Dampak harga bahan
+    'Harga bahan berubah, jadi modal produk ini ikut berubah. Saran harga menjaga margin seperti sebelumnya.': 'Ingredient prices changed, so these products cost a different amount to make. The suggested price keeps your old margin.',
+    'Modal': 'Cost',
+    'Harga jual {harga} · margin {lama}% → {baru}%': 'Price {harga} · margin {lama}% → {baru}%',
+    'Harga tetap': 'Keep price',
+    'Jual {harga}': 'Sell at {harga}',
+
+    // Produksi
+    'stok sekarang': 'stock now',
+    'Berapa kali resep dibuat?': 'How many batches did you make?',
+    'Tambah ke stok': 'Add to stock',
+    'Menambah {n} {satuan} ke stok.': 'Adds {n} {satuan} to stock.',
+    'Memakai {daftar}.': 'Uses {daftar}.',
+    'Stok bertambah': 'Stock added',
+
+    // Pengeluaran
+    'Ubah pengeluaran': 'Edit expense',
+    'Catat pengeluaran': 'Add expense',
+    'Jumlah (Rp)': 'Amount (Rp)',
+    'Jenis': 'Type',
+    'Tanggal': 'Date',
+    'Catatan (boleh kosong)': 'Note (optional)',
+    'Contoh: listrik bulan Oktober': 'Example: October electricity',
+    'Belanja bahan baku tidak perlu dicatat di sini, karena sudah dihitung sebagai modal produk yang terjual.': 'No need to record ingredient shopping here; it is already counted in the cost of products sold.',
+    'Pengeluaran tersimpan': 'Expense saved',
+    'Hapus pengeluaran ini?': 'Delete this expense?',
+
+    // Struk
+    'Struk penjualan': 'Sales receipt',
+    'Bayar': 'Paid',
+    'Kembali': 'Change',
+    'Terima kasih!': 'Thank you!',
+    'Kirim gambar lewat WhatsApp': 'Send image on WhatsApp',
+    'Simpan gambar': 'Save image',
+    'Kirim sebagai teks': 'Send as text',
+    'Simpan gambarnya, lalu kirim dari WhatsApp seperti mengirim foto.': 'Save the image, then send it from WhatsApp like any photo.',
+    'Batalkan penjualan ini? Stok produk dan bahan akan dikembalikan.': 'Cancel this sale? Product and ingredient stock will be put back.',
+  };
+
+  const KAMUS = { en: EN };
+
+  function buat(bahasa) {
+    const kamus = KAMUS[bahasa] || {};
+    return function t(teks, nilai) {
+      let out = Object.prototype.hasOwnProperty.call(kamus, teks) ? kamus[teks] : teks;
+      if (nilai) out = out.replace(/\{(\w+)\}/g, (m, k) => (nilai[k] != null ? nilai[k] : m));
+      return out;
+    };
+  }
+
+  function bacaPengaturan(storage) {
+    try {
+      const raw = storage.getItem(KEY);
+      const p = raw ? JSON.parse(raw) : {};
+      const bahasaAda = p.bahasa === 'id' || Object.prototype.hasOwnProperty.call(KAMUS, p.bahasa);
+      return {
+        bahasa: bahasaAda ? p.bahasa : BAWAAN.bahasa,
+        tema: ['terang', 'gelap', 'otomatis'].includes(p.tema) ? p.tema : BAWAAN.tema,
+      };
+    } catch (e) {
+      return Object.assign({}, BAWAAN);
+    }
+  }
+
+  function simpanPengaturan(storage, p) {
+    try { storage.setItem(KEY, JSON.stringify({ bahasa: p.bahasa, tema: p.tema })); } catch (e) { /* penyimpanan penuh */ }
+  }
+
+  const api = { buat, bacaPengaturan, simpanPengaturan, KEY, EN };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.KelolaBahasa = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);

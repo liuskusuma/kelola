@@ -11,6 +11,11 @@
   const viewEl = $('#view');
   const dialog = $('#dialog');
 
+  // Pengaturan tampilan dan bahasa disimpan per perangkat, bukan di cloud.
+  const setel = KelolaBahasa.bacaPengaturan(window.localStorage);
+  let t = KelolaBahasa.buat(setel.bahasa);
+  const lokal = () => (setel.bahasa === 'en' ? 'en-GB' : 'id-ID');
+
   const rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
   const angka = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 });
   const rp = (n) => rupiah.format(Math.round(n || 0));
@@ -31,6 +36,7 @@
     authMsg: null,
     authEmail: '',
     struk: null, // { blob, url, teks }
+    foto: null, // foto produk di form yang sedang dibuka (data URL)
   };
 
   const cloud = {
@@ -83,23 +89,42 @@
 
   const satuanBahan = (b) => esc((b && b.satuan) || '');
 
+  // ---------- Pengaturan ----------
+
+  function terapkanTema() {
+    document.documentElement.dataset.tema = setel.tema;
+    document.documentElement.lang = setel.bahasa;
+    const gelap = setel.tema === 'gelap' || (setel.tema === 'otomatis' && matchMedia('(prefers-color-scheme: dark)').matches);
+    $$('meta[name="theme-color"]').forEach((m) => { m.content = gelap ? '#14234f' : '#f2f5fa'; m.removeAttribute('media'); });
+  }
+
+  function ubahPengaturan(patch) {
+    Object.assign(setel, patch);
+    KelolaBahasa.simpanPengaturan(window.localStorage, setel);
+    t = KelolaBahasa.buat(setel.bahasa);
+    terapkanTema();
+    render();
+  }
+
   // ---------- Tampilan ----------
 
   const JUDUL = {
     kasir: ['Kasir', 'Catat penjualan'],
     produk: ['Produk', 'Harga jual, resep & stok'],
     laporan: ['Laporan', 'Omzet, pengeluaran & laba'],
-    akun: ['Akun', 'Profil & simpan ke cloud'],
+    akun: ['Akun', 'Profil, pengaturan & cloud'],
   };
 
   function render() {
     document.querySelectorAll('nav.tabs button').forEach((b) => {
       if (b.dataset.go === ui.view) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
+      $('.teks', b).textContent = t(JUDUL[b.dataset.go][0]);
     });
+    $('nav.tabs').setAttribute('aria-label', t('Menu utama'));
     const [judul, sub] = JUDUL[ui.view];
-    $('#judul').textContent = judul;
-    $('#subjudul').textContent = profil().namaUsaha || sub;
+    $('#judul').textContent = t(judul);
+    $('#subjudul').textContent = profil().namaUsaha || t(sub);
     renderBadge();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
@@ -108,16 +133,17 @@
 
   function renderBadge() {
     const badge = $('#syncBadge');
-    let text = 'Lokal';
-    let title = 'Data hanya tersimpan di perangkat ini. Masuk untuk menyimpan ke cloud.';
+    let text = t('Lokal');
+    let title = t('Data hanya tersimpan di perangkat ini. Masuk untuk menyimpan ke cloud.');
     let cls = '';
     if (cloud.user) {
       const pending = store.dirtyRecords().length;
-      if (!navigator.onLine) { text = 'Offline'; title = pending ? `${pending} perubahan belum terkirim` : 'Tidak ada koneksi'; cls = 'warn'; }
-      else if (cloud.status === 'syncing') { text = 'Sinkron…'; title = 'Menyinkronkan'; cls = 'busy'; }
-      else if (cloud.status === 'error') { text = 'Gagal'; title = 'Gagal sinkron'; cls = 'err'; }
-      else if (pending) { text = `${pending} tertunda`; title = `${pending} perubahan belum terkirim`; cls = 'warn'; }
-      else { text = 'Tersimpan'; title = 'Semua data tersimpan di cloud'; cls = 'ok'; }
+      const belum = t('{n} perubahan belum terkirim', { n: pending });
+      if (!navigator.onLine) { text = t('Offline'); title = pending ? belum : t('Tidak ada koneksi'); cls = 'warn'; }
+      else if (cloud.status === 'syncing') { text = t('Sinkron…'); title = t('Menyinkronkan'); cls = 'busy'; }
+      else if (cloud.status === 'error') { text = t('Gagal'); title = t('Gagal sinkron'); cls = 'err'; }
+      else if (pending) { text = t('{n} tertunda', { n: pending }); title = belum; cls = 'warn'; }
+      else { text = t('Tersimpan'); title = t('Semua data tersimpan di cloud'); cls = 'ok'; }
     }
     badge.innerHTML = `<span class="dot"></span><span>${esc(text)}</span>`;
     badge.title = title;
@@ -137,7 +163,7 @@
     const qty = items.reduce((s, x) => s + x.qty, 0);
     const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
     document.body.classList.toggle('ada-ringkasan', qty > 0);
-    $('#summary').innerHTML = `<span>Keranjang · ${angka.format(qty)} item</span><b>${rp(total)} ›</b>`;
+    $('#summary').innerHTML = `<span>${t('Keranjang · {n} item', { n: angka.format(qty) })}</span><b>${rp(total)} ›</b>`;
   }
 
   // Bisa ditambah satu lagi ke keranjang tanpa melebihi stok?
@@ -147,12 +173,14 @@
     return H.stokCukup(cart, cari);
   }
 
+  const fotoKecil = (d) => (d.foto ? `<img class="thumb" src="${esc(d.foto)}" alt="">` : '');
+
   function viewKasir() {
     const produk = produkList();
     if (!produk.length) {
-      return `<div class="group-title">Mulai berjualan</div><div class="card empty stack">
-        <div>Belum ada produk. Tambahkan produk dulu, lalu ketuk produk di sini setiap kali ada pembeli.</div>
-        <button class="btn primary" data-act="produk-baru">Tambah produk pertama</button></div>`;
+      return `<div class="group-title">${t('Mulai berjualan')}</div><div class="card empty stack">
+        <div>${t('Belum ada produk. Tambahkan produk dulu, lalu ketuk produk di sini setiap kali ada pembeli.')}</div>
+        <button class="btn primary" data-act="produk-baru">${t('Tambah produk pertama')}</button></div>`;
     }
     const items = isiKeranjang();
     const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
@@ -160,39 +188,40 @@
     const tiles = produk.map((p) => {
       const d = p.data;
       const habis = !bisaTambah(p.id);
-      const stok = d.stok != null && d.mode !== 'paket' ? `<div class="small muted">Stok ${angka.format(d.stok)} ${esc(d.satuan || '')}</div>` : '';
+      const stok = d.stok != null && d.mode !== 'paket' ? `<div class="small muted">${t('Stok')} ${angka.format(d.stok)} ${esc(d.satuan || '')}</div>` : '';
       const jumlah = ui.cart[p.id] ? `<span class="jumlah">${ui.cart[p.id]}</span>` : '';
-      return `<button class="tile" data-act="tambah-keranjang" data-id="${p.id}" ${habis ? 'disabled' : ''}>
-        ${jumlah}<div class="nama">${esc(d.nama)}</div><div class="harga">${rp(d.harga)}</div>${stok}</button>`;
+      const foto = d.foto ? `<img class="foto" src="${esc(d.foto)}" alt="">` : '';
+      return `<button class="tile ${d.foto ? 'ada-foto' : ''}" data-act="tambah-keranjang" data-id="${p.id}" ${habis ? 'disabled' : ''}>
+        ${jumlah}${foto}<div class="isi"><div class="nama">${esc(d.nama)}</div><div class="harga">${rp(d.harga)}</div>${stok}</div></button>`;
     }).join('');
     const terakhir = !items.length && ui.trxTerakhir && store.get(ui.trxTerakhir);
     const info = terakhir
-      ? `<div class="card row" id="trxTerakhir"><div><div class="nama label">Penjualan ${rp(terakhir.data.total)} tersimpan</div>
-          <div class="small muted">Kirim struk ke pembeli lewat WhatsApp.</div></div>
-          <button class="btn kecil primary" data-act="struk" data-id="${terakhir.id}">Struk</button></div>`
+      ? `<div class="card row" id="trxTerakhir"><div><div class="nama label">${t('Penjualan {total} tersimpan', { total: rp(terakhir.data.total) })}</div>
+          <div class="small muted">${t('Kirim struk ke pembeli lewat WhatsApp.')}</div></div>
+          <button class="btn kecil primary" data-act="struk" data-id="${terakhir.id}">${t('Struk')}</button></div>`
       : '';
     const cart = items.length
-      ? `<div class="group-title" id="keranjang">Keranjang</div><div class="card">
+      ? `<div class="group-title" id="keranjang">${t('Keranjang')}</div><div class="card">
         <ul class="list">${items.map((x) => `<li class="row">
-          <div><div class="nama">${esc(x.rec.data.nama)}</div><div class="small muted">${rp(x.rec.data.harga)} × ${x.qty} = ${rp(x.rec.data.harga * x.qty)}</div></div>
-          <div class="qty"><button data-act="kurang" data-id="${x.rec.id}" aria-label="Kurangi">−</button><span>${x.qty}</span>
-          <button data-act="tambah-keranjang" data-id="${x.rec.id}" aria-label="Tambah" ${bisaTambah(x.rec.id) ? '' : 'disabled'}>+</button></div></li>`).join('')}</ul>
-        <div class="row" style="margin-top:8px"><span class="label">Total</span><span class="total">${rp(total)}</span></div>
+          <div class="dengan-foto">${fotoKecil(x.rec.data)}<div><div class="nama">${esc(x.rec.data.nama)}</div><div class="small muted">${rp(x.rec.data.harga)} × ${x.qty} = ${rp(x.rec.data.harga * x.qty)}</div></div></div>
+          <div class="qty"><button data-act="kurang" data-id="${x.rec.id}" aria-label="${t('Kurangi')}">−</button><span>${x.qty}</span>
+          <button data-act="tambah-keranjang" data-id="${x.rec.id}" aria-label="${t('Tambah')}" ${bisaTambah(x.rec.id) ? '' : 'disabled'}>+</button></div></li>`).join('')}</ul>
+        <div class="row" style="margin-top:8px"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>
         <div class="two" style="margin-top:14px">
-          <label class="field"><span>Uang diterima</span><input id="bayar" type="number" inputmode="numeric" min="0" value="${esc(ui.bayar)}" placeholder="${total}"></label>
-          <div class="field"><span class="lbl">Kembalian</span><div class="total" id="kembalian" style="padding:6px 4px">${bayar >= total ? rp(bayar - total) : '–'}</div></div>
+          <label class="field"><span>${t('Uang diterima')}</span><input id="bayar" type="number" inputmode="numeric" min="0" value="${esc(ui.bayar)}" placeholder="${total}"></label>
+          <div class="field"><span class="lbl">${t('Kembalian')}</span><div class="total" id="kembalian" style="padding:6px 4px">${bayar >= total ? rp(bayar - total) : '–'}</div></div>
         </div>
         <div class="row" style="margin-top:16px">
-          <button class="btn" data-act="kosongkan">Kosongkan</button>
-          <button class="btn primary" data-act="simpan-penjualan">Simpan penjualan</button>
+          <button class="btn" data-act="kosongkan">${t('Kosongkan')}</button>
+          <button class="btn primary" data-act="simpan-penjualan">${t('Simpan penjualan')}</button>
         </div></div>`
       : '';
-    const petunjuk = items.length ? '' : '<div class="foot" style="margin:0 8px 14px">Ketuk produk untuk menambahkannya ke keranjang.</div>';
-    return `${info}${cart}<div class="group-title">Produk</div>${petunjuk}<div class="grid">${tiles}</div>`;
+    const petunjuk = items.length ? '' : `<div class="foot" style="margin:0 8px 14px">${t('Ketuk produk untuk menambahkannya ke keranjang.')}</div>`;
+    return `${info}${cart}<div class="group-title">${t('Produk')}</div>${petunjuk}<div class="grid">${tiles}</div>`;
   }
 
   function viewProduk() {
-    const seg = [['produk', 'Produk'], ['bahan', 'Bahan baku']]
+    const seg = [['produk', t('Produk')], ['bahan', t('Bahan baku')]]
       .map(([k, l]) => `<button data-act="produk-tab" data-t="${k}" aria-pressed="${ui.produkTab === k}">${l}</button>`).join('');
     return `<div class="seg" style="margin-top:10px">${seg}</div>${ui.produkTab === 'bahan' ? viewBahan() : viewDaftarProduk()}`;
   }
@@ -201,30 +230,30 @@
     const produk = produkList();
     const berubah = produkBerubah();
     const peringatan = berubah.length
-      ? `<div class="card stack peringatan"><div><span class="label">Harga bahan berubah</span>
-          <div class="small muted">Modal ${berubah.length} produk ikut berubah. Cek apakah harga jualnya masih menguntungkan.</div></div>
-          <button class="btn primary block" data-act="dampak">Cek harga jual</button></div>`
+      ? `<div class="card stack peringatan"><div><span class="label">${t('Harga bahan berubah')}</span>
+          <div class="small muted">${t('Modal {n} produk ikut berubah. Cek apakah harga jualnya masih menguntungkan.', { n: berubah.length })}</div></div>
+          <button class="btn primary block" data-act="dampak">${t('Cek harga jual')}</button></div>`
       : '';
     const list = produk.length
       ? `<ul class="list">${produk.map((p) => {
           const d = p.data;
           const modal = modalOf(p);
           const m = H.margin(modal, d.harga);
-          const stok = d.stok != null && d.mode !== 'paket' ? ` · stok ${angka.format(d.stok)} ${esc(d.satuan || '')}` : '';
-          const jenis = d.mode === 'resep' ? '<span class="tag">Resep</span>' : d.mode === 'paket' ? '<span class="tag">Paket</span>' : '';
+          const stok = d.stok != null && d.mode !== 'paket' ? ` · ${t('stok')} ${angka.format(d.stok)} ${esc(d.satuan || '')}` : '';
+          const jenis = d.mode === 'resep' ? `<span class="tag">${t('Resep')}</span>` : d.mode === 'paket' ? `<span class="tag">${t('Paket')}</span>` : '';
           const naik = pakaiResep(d) && Math.abs(modal - (d.modal || 0)) >= 1
-            ? `<div class="small warn">Modal ${modal > d.modal ? 'naik' : 'turun'} dari ${rp(d.modal)}</div>` : '';
-          const rugi = d.harga < modal ? '<div class="small err">Harga jual di bawah modal!</div>' : '';
+            ? `<div class="small warn">${t(modal > d.modal ? 'Modal naik dari {x}' : 'Modal turun dari {x}', { x: rp(d.modal) })}</div>` : '';
+          const rugi = d.harga < modal ? `<div class="small err">${t('Harga jual di bawah modal!')}</div>` : '';
           const produksi = d.mode === 'resep' && d.stok != null
-            ? `<button class="btn kecil" data-act="produksi" data-id="${p.id}">Produksi</button>` : '';
-          return `<li class="row"><div><div class="nama">${esc(d.nama)} ${jenis}</div>
-            <div class="small muted">Modal ${rp(modal)} · jual ${rp(d.harga)} · laba ${rp(d.harga - modal)} (${angka.format(m)}%)${stok}</div>${naik}${rugi}</div>
-            <div class="aksi">${produksi}<button class="btn kecil" data-act="produk-ubah" data-id="${p.id}">Ubah</button></div></li>`;
+            ? `<button class="btn kecil" data-act="produksi" data-id="${p.id}">${t('Produksi')}</button>` : '';
+          return `<li class="row"><div class="dengan-foto">${fotoKecil(d)}<div><div class="nama">${esc(d.nama)} ${jenis}</div>
+            <div class="small muted">${t('Modal {modal} · jual {harga} · laba {laba} ({m}%)', { modal: rp(modal), harga: rp(d.harga), laba: rp(d.harga - modal), m: angka.format(m) })}${stok}</div>${naik}${rugi}</div></div>
+            <div class="aksi">${produksi}<button class="btn kecil" data-act="produk-ubah" data-id="${p.id}">${t('Ubah')}</button></div></li>`;
         }).join('')}</ul>`
-      : '<div class="empty">Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.</div>';
-    return `${peringatan}<div class="group-title"><span>Daftar produk</span><button class="link tambah" data-act="produk-baru">+ Tambah produk</button></div>
+      : `<div class="empty">${t('Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.')}</div>`;
+    return `${peringatan}<div class="group-title"><span>${t('Daftar produk')}</span><button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></div>
       <div class="card">${list}</div>
-      <div class="foot">Modal bisa diisi sendiri, dihitung dari resep bahan baku, atau dari isi paket. Harga jual disarankan dari target margin.</div>`;
+      <div class="foot">${t('Modal bisa diisi sendiri, dihitung dari resep bahan baku, atau dari isi paket. Harga jual disarankan dari target margin.')}</div>`;
   }
 
   function viewBahan() {
@@ -232,16 +261,16 @@
     const list = bahan.length
       ? `<ul class="list">${bahan.map((b) => {
           const d = b.data;
-          const stok = d.stok != null ? ` · stok ${angka.format(d.stok)} ${satuanBahan(d)}` : '';
-          const tipis = d.stok != null && d.stok <= 0 ? '<div class="small err">Stok habis</div>' : '';
+          const stok = d.stok != null ? ` · ${t('stok')} ${angka.format(d.stok)} ${satuanBahan(d)}` : '';
+          const tipis = d.stok != null && d.stok <= 0 ? `<div class="small err">${t('Stok habis')}</div>` : '';
           return `<li class="row"><div><div class="nama">${esc(d.nama)}</div>
-            <div class="small muted">${rp(d.harga)} / ${angka.format(d.isi)} ${satuanBahan(d)} · ${rp(H.hargaSatuan(d))} per ${satuanBahan(d)}${stok}</div>${tipis}</div>
-            <button class="btn kecil" data-act="bahan-ubah" data-id="${b.id}">Ubah</button></li>`;
+            <div class="small muted">${rp(d.harga)} / ${angka.format(d.isi)} ${satuanBahan(d)} · ${rp(H.hargaSatuan(d))} ${t('per')} ${satuanBahan(d)}${stok}</div>${tipis}</div>
+            <button class="btn kecil" data-act="bahan-ubah" data-id="${b.id}">${t('Ubah')}</button></li>`;
         }).join('')}</ul>`
-      : '<div class="empty">Belum ada bahan baku. Catat bahan dan harga belinya supaya modal produk dihitung otomatis dari resep.</div>';
-    return `<div class="group-title"><span>Bahan baku</span><button class="link tambah" data-act="bahan-baru">+ Tambah bahan</button></div>
+      : `<div class="empty">${t('Belum ada bahan baku. Catat bahan dan harga belinya supaya modal produk dihitung otomatis dari resep.')}</div>`;
+    return `<div class="group-title"><span>${t('Bahan baku')}</span><button class="link tambah" data-act="bahan-baru">${t('+ Tambah bahan')}</button></div>
       <div class="card">${list}</div>
-      <div class="foot">Kalau harga bahan naik, ubah harganya di sini. Kelola akan menunjukkan produk mana yang modalnya ikut naik.</div>`;
+      <div class="foot">${t('Kalau harga bahan naik, ubah harganya di sini. Kelola akan menunjukkan produk mana yang modalnya ikut naik.')}</div>`;
   }
 
   function rentang(periode) {
@@ -253,111 +282,118 @@
     return start.getTime();
   }
 
+  // Disimpan dalam Bahasa Indonesia; ditampilkan sesuai bahasa yang dipilih.
   const KATEGORI = ['Sewa tempat', 'Listrik & air', 'Gaji', 'Transportasi', 'Iklan & promosi', 'Peralatan', 'Lainnya'];
 
   function viewLaporan() {
     const from = rentang(ui.periode);
-    const dalam = (t) => Date.parse(t.data.waktu) >= from;
+    const dalam = (r) => Date.parse(r.data.waktu) >= from;
     const urut = (a, b) => b.data.waktu.localeCompare(a.data.waktu);
     const trx = store.list('transaksi').filter(dalam).sort(urut);
     const keluar = store.list('pengeluaran').filter(dalam).sort(urut);
-    const omzet = trx.reduce((s, t) => s + t.data.total, 0);
-    const laba = trx.reduce((s, t) => s + t.data.laba, 0);
-    const biaya = keluar.reduce((s, t) => s + t.data.jumlah, 0);
+    const omzet = trx.reduce((s, r) => s + r.data.total, 0);
+    const laba = trx.reduce((s, r) => s + r.data.laba, 0);
+    const biaya = keluar.reduce((s, r) => s + r.data.jumlah, 0);
     const bersih = laba - biaya;
     const terjual = {};
-    trx.forEach((t) => t.data.items.forEach((i) => {
+    trx.forEach((r) => r.data.items.forEach((i) => {
       terjual[i.nama] = terjual[i.nama] || { qty: 0, omzet: 0 };
       terjual[i.nama].qty += i.qty;
       terjual[i.nama].omzet += i.qty * i.harga;
     }));
     const top = Object.entries(terjual).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 5);
-    const seg = [['hari', 'Hari ini'], ['7hari', '7 hari'], ['bulan', 'Bulan ini'], ['semua', 'Semua']]
+    const seg = [['hari', t('Hari ini')], ['7hari', t('7 hari')], ['bulan', t('Bulan ini')], ['semua', t('Semua')]]
       .map(([k, l]) => `<button data-act="periode" data-p="${k}" aria-pressed="${ui.periode === k}">${l}</button>`).join('');
-    const fmtWaktu = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    const fmtTanggal = (iso) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    return `<div class="group-title">Periode</div><div class="seg">${seg}</div>
+    const fmtWaktu = (iso) => new Date(iso).toLocaleString(lokal(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const fmtTanggal = (iso) => new Date(iso).toLocaleDateString(lokal(), { day: 'numeric', month: 'short' });
+    return `<div class="group-title">${t('Periode')}</div><div class="seg">${seg}</div>
       <div class="stats">
-        <div class="stat utama"><div class="lbl">Omzet</div><div class="value">${rp(omzet)}</div></div>
-        <div class="stat"><div class="lbl">Laba kotor</div><div class="value">${rp(laba)}</div></div>
-        <div class="stat"><div class="lbl">Pengeluaran</div><div class="value">${rp(biaya)}</div></div>
-        <div class="stat" id="labaBersih"><div class="lbl">Laba bersih</div><div class="value ${bersih < 0 ? 'err' : ''}">${rp(bersih)}</div></div>
-        <div class="stat"><div class="lbl">Transaksi</div><div class="value">${trx.length}</div></div>
-        <div class="stat"><div class="lbl">Margin rata-rata</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
+        <div class="stat utama"><div class="lbl">${t('Omzet')}</div><div class="value">${rp(omzet)}</div></div>
+        <div class="stat"><div class="lbl">${t('Laba kotor')}</div><div class="value">${rp(laba)}</div></div>
+        <div class="stat" id="statPengeluaran"><div class="lbl">${t('Pengeluaran')}</div><div class="value">${rp(biaya)}</div></div>
+        <div class="stat" id="labaBersih"><div class="lbl">${t('Laba bersih')}</div><div class="value ${bersih < 0 ? 'err' : ''}">${rp(bersih)}</div></div>
+        <div class="stat"><div class="lbl">${t('Transaksi')}</div><div class="value">${trx.length}</div></div>
+        <div class="stat"><div class="lbl">${t('Margin rata-rata')}</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
       </div>
-      <div class="foot">Laba kotor = omzet dikurangi modal barang yang terjual. Laba bersih = laba kotor dikurangi pengeluaran.</div>
-      <div class="group-title">Produk terlaris</div>
+      <div class="foot">${t('Laba kotor = omzet dikurangi modal barang yang terjual. Laba bersih = laba kotor dikurangi pengeluaran.')}</div>
+      <div class="group-title">${t('Produk terlaris')}</div>
       <div class="card">${top.length
-        ? `<ul class="list">${top.map(([n, v]) => `<li class="row"><span class="nama">${esc(n)}</span><span class="small muted">${angka.format(v.qty)} terjual · ${rp(v.omzet)}</span></li>`).join('')}</ul>`
-        : '<div class="empty">Belum ada penjualan di periode ini.</div>'}</div>
-      <div class="group-title"><span>Pengeluaran</span><button class="link tambah" data-act="pengeluaran-baru">+ Catat pengeluaran</button></div>
+        ? `<ul class="list">${top.map(([n, v]) => `<li class="row"><span class="nama">${esc(n)}</span><span class="small muted">${t('{n} terjual', { n: angka.format(v.qty) })} · ${rp(v.omzet)}</span></li>`).join('')}</ul>`
+        : `<div class="empty">${t('Belum ada penjualan di periode ini.')}</div>`}</div>
+      <div class="group-title"><span>${t('Pengeluaran')}</span><button class="link tambah" data-act="pengeluaran-baru">${t('+ Catat pengeluaran')}</button></div>
       <div class="card">${keluar.length
-        ? `<ul class="list">${keluar.map((t) => `<li class="row"><div><div class="nama">${rp(t.data.jumlah)} <span class="small muted">· ${esc(t.data.kategori)}</span></div>
-            <div class="small muted">${fmtTanggal(t.data.waktu)}${t.data.catatan ? ' · ' + esc(t.data.catatan) : ''}</div></div>
-            <button class="btn kecil" data-act="pengeluaran-ubah" data-id="${t.id}">Ubah</button></li>`).join('')}</ul>`
-        : '<div class="empty">Belum ada pengeluaran di periode ini. Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.</div>'}</div>
-      <div class="group-title">Riwayat penjualan</div>
+        ? `<ul class="list">${keluar.map((r) => `<li class="row"><div><div class="nama">${rp(r.data.jumlah)} <span class="small muted">· ${esc(t(r.data.kategori))}</span></div>
+            <div class="small muted">${fmtTanggal(r.data.waktu)}${r.data.catatan ? ' · ' + esc(r.data.catatan) : ''}</div></div>
+            <button class="btn kecil" data-act="pengeluaran-ubah" data-id="${r.id}">${t('Ubah')}</button></li>`).join('')}</ul>`
+        : `<div class="empty">${t('Belum ada pengeluaran di periode ini. Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.')}</div>`}</div>
+      <div class="group-title">${t('Riwayat penjualan')}</div>
       <div class="card">${trx.length
-        ? `<ul class="list">${trx.map((t) => `<li class="row"><div><div><span class="nama">${rp(t.data.total)}</span> <span class="small muted">· laba ${rp(t.data.laba)}</span></div>
-            <div class="small muted">${fmtWaktu(t.data.waktu)} · ${esc(t.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div></div>
-            <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${t.id}">Struk</button>
-            <button class="btn kecil danger" data-act="batal-trx" data-id="${t.id}">Batalkan</button></div></li>`).join('')}</ul>`
-        : '<div class="empty">Belum ada penjualan.</div>'}</div>`;
+        ? `<ul class="list">${trx.map((r) => `<li class="row"><div><div><span class="nama">${rp(r.data.total)}</span> <span class="small muted">· ${t('laba')} ${rp(r.data.laba)}</span></div>
+            <div class="small muted">${fmtWaktu(r.data.waktu)} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div></div>
+            <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${r.id}">${t('Struk')}</button>
+            <button class="btn kecil danger" data-act="batal-trx" data-id="${r.id}">${t('Batalkan')}</button></div></li>`).join('')}</ul>`
+        : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
   }
 
   function viewAkun() {
     const p = profil();
-    const usaha = `<div class="group-title">Profil usaha</div><div class="card stack">
-      <label class="field"><span>Nama usaha</span><input id="namaUsahaInput" value="${esc(p.namaUsaha)}" placeholder="Contoh: Warung Bu Sari"></label>
-      <label class="field"><span>Alamat atau nomor WhatsApp (tampil di struk)</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="Contoh: Jl. Melati 5 · 0812 3456 7890"></label>
-      <button class="btn" data-act="simpan-profil">Simpan</button></div>`;
-    return `${usaha}${viewCloud()}`;
+    const pilih = (nama, nilai, opsi) => `<div class="seg kecil" role="group">${opsi.map(([k, l]) =>
+      `<button data-act="setel" data-nama="${nama}" data-nilai="${k}" aria-pressed="${nilai === k}">${l}</button>`).join('')}</div>`;
+    const usaha = `<div class="group-title">${t('Profil usaha')}</div><div class="card stack">
+      <label class="field"><span>${t('Nama usaha')}</span><input id="namaUsahaInput" value="${esc(p.namaUsaha)}" placeholder="${t('Contoh: Warung Bu Sari')}"></label>
+      <label class="field"><span>${t('Alamat atau nomor WhatsApp (tampil di struk)')}</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="${t('Contoh: Jl. Melati 5 · 0812 3456 7890')}"></label>
+      <button class="btn" data-act="simpan-profil">${t('Simpan')}</button></div>`;
+    const pengaturan = `<div class="group-title">${t('Pengaturan')}</div><div class="card stack" id="pengaturan">
+      <div class="field"><span class="lbl">${t('Bahasa')}</span>${pilih('bahasa', setel.bahasa, [['id', 'Bahasa Indonesia'], ['en', 'English']])}</div>
+      <div class="field"><span class="lbl">${t('Tampilan')}</span>${pilih('tema', setel.tema, [['terang', t('Terang')], ['gelap', t('Gelap')], ['otomatis', t('Ikuti HP')]])}</div>
+      </div>`;
+    return `${usaha}${pengaturan}${viewCloud()}`;
   }
 
   function viewCloud() {
     if (!cloudReady) {
-      return `<div class="group-title">Simpan ke cloud</div><div class="card stack">
-        <div class="muted">Sinkronisasi cloud belum diaktifkan di aplikasi ini, jadi data hanya tersimpan di perangkat ini.
-        Pemilik aplikasi perlu mengisi <code>js/config.js</code> (lihat README).</div></div>`;
+      return `<div class="group-title">${t('Simpan ke cloud')}</div><div class="card stack">
+        <div class="muted">${t('Sinkronisasi cloud belum diaktifkan di aplikasi ini, jadi data hanya tersimpan di perangkat ini.')}
+        ${t('Pemilik aplikasi perlu mengisi js/config.js (lihat README).')}</div></div>`;
     }
     const msg = ui.authMsg ? `<div class="msg ${ui.authMsg.type}">${esc(ui.authMsg.text)}</div>` : '';
     if (cloud.recovering) {
-      return `<div class="group-title">Buat kata sandi baru</div><div class="card stack">${msg}
+      return `<div class="group-title">${t('Buat kata sandi baru')}</div><div class="card stack">${msg}
         <form id="formSandiBaru" class="stack">
-          <label class="field"><span>Kata sandi baru</span><input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
-          <button class="btn primary block">Simpan kata sandi</button></form></div>`;
+          <label class="field"><span>${t('Kata sandi baru')}</span><input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
+          <button class="btn primary block">${t('Simpan kata sandi')}</button></form></div>`;
     }
     if (cloud.user) {
       const pending = store.dirtyRecords().length;
-      const last = cloud.lastSynced ? cloud.lastSynced.toLocaleString('id-ID') : 'belum';
+      const last = cloud.lastSynced ? cloud.lastSynced.toLocaleString(lokal()) : t('belum');
       const err = cloud.status === 'error' && cloud.lastError
-        ? `<div class="msg err">Gagal sinkron: ${esc(cloud.lastError.message || cloud.lastError)}. Data tetap aman di perangkat ini dan akan dikirim ulang.</div>` : '';
-      return `<div class="group-title">Simpan ke cloud</div><div class="card stack">
-        <div>Masuk sebagai <strong>${esc(cloud.user.email)}</strong></div>
-        <div class="small muted">Sinkron terakhir: ${esc(last)} · ${pending ? pending + ' perubahan belum terkirim' : 'semua data sudah terkirim'}</div>
+        ? `<div class="msg err">${t('Gagal sinkron: {pesan}. Data tetap aman di perangkat ini dan akan dikirim ulang.', { pesan: esc(cloud.lastError.message || cloud.lastError) })}</div>` : '';
+      return `<div class="group-title">${t('Simpan ke cloud')}</div><div class="card stack">
+        <div>${t('Masuk sebagai')} <strong>${esc(cloud.user.email)}</strong></div>
+        <div class="small muted">${t('Sinkron terakhir: {waktu}', { waktu: esc(last) })} · ${pending ? t('{n} perubahan belum terkirim', { n: pending }) : t('semua data sudah terkirim')}</div>
         ${err}${msg}
-        <div class="row"><button class="btn" data-act="sinkron">Sinkronkan sekarang</button>
-        <button class="btn danger" data-act="keluar">Keluar</button></div></div>
-        <div class="foot">Masuk dengan akun yang sama di HP, tablet, atau laptop lain untuk melihat data yang sama.</div>`;
+        <div class="row"><button class="btn" data-act="sinkron">${t('Sinkronkan sekarang')}</button>
+        <button class="btn danger" data-act="keluar">${t('Keluar')}</button></div></div>
+        <div class="foot">${t('Masuk dengan akun yang sama di HP, tablet, atau laptop lain untuk melihat data yang sama.')}</div>`;
     }
     const daftar = ui.authMode === 'daftar';
     const lupa = ui.authMode === 'lupa';
-    const judul = daftar ? 'Buat akun' : lupa ? 'Lupa kata sandi' : 'Masuk';
-    const pw = lupa ? '' : `<label class="field"><span>Kata sandi</span><input name="password" type="password" ${daftar ? 'minlength="6"' : ''} autocomplete="${daftar ? 'new-password' : 'current-password'}" required></label>`;
-    const tombol = daftar ? 'Daftar' : lupa ? 'Kirim tautan reset' : 'Masuk';
-    const lokal = store.list('produk').length + store.list('transaksi').length;
-    const info = lokal ? `<div class="hint">Data yang sudah ada di perangkat ini akan ikut tersimpan ke akun Anda setelah masuk.</div>` : '';
+    const judul = daftar ? t('Buat akun') : lupa ? t('Lupa kata sandi') : t('Masuk');
+    const pw = lupa ? '' : `<label class="field"><span>${t('Kata sandi')}</span><input name="password" type="password" ${daftar ? 'minlength="6"' : ''} autocomplete="${daftar ? 'new-password' : 'current-password'}" required></label>`;
+    const tombol = daftar ? t('Daftar') : lupa ? t('Kirim tautan reset') : t('Masuk');
+    const adaData = store.list('produk').length + store.list('transaksi').length;
+    const info = adaData ? `<div class="hint">${t('Data yang sudah ada di perangkat ini akan ikut tersimpan ke akun Anda setelah masuk.')}</div>` : '';
     return `<div class="group-title">${judul}</div><div class="card stack">
-      <div class="muted small">Masuk supaya data tidak hilang saat HP rusak atau ganti perangkat, dan bisa dibuka di beberapa perangkat sekaligus.</div>
+      <div class="muted small">${t('Masuk supaya data tidak hilang saat HP rusak atau ganti perangkat, dan bisa dibuka di beberapa perangkat sekaligus.')}</div>
       ${info}${msg}
       <form id="formAuth" class="stack">
-        <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" required value="${esc(ui.authEmail)}"></label>
+        <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(ui.authEmail)}"></label>
         ${pw}
         <button class="btn primary block">${tombol}</button>
       </form>
       <div class="row small">
-        ${daftar || lupa ? '<button class="link" data-act="mode" data-m="masuk">Sudah punya akun? Masuk</button>' : '<button class="link" data-act="mode" data-m="daftar">Belum punya akun? Daftar</button>'}
-        ${lupa ? '' : '<button class="link" data-act="mode" data-m="lupa">Lupa kata sandi?</button>'}
+        ${daftar || lupa ? `<button class="link" data-act="mode" data-m="masuk">${t('Sudah punya akun? Masuk')}</button>` : `<button class="link" data-act="mode" data-m="daftar">${t('Belum punya akun? Daftar')}</button>`}
+        ${lupa ? '' : `<button class="link" data-act="mode" data-m="lupa">${t('Lupa kata sandi?')}</button>`}
       </div></div>`;
   }
 
@@ -370,22 +406,24 @@
   function barisResep(item) {
     const bahan = bahanList();
     const b = item && cari(item.bahanId);
-    const hilang = item && item.bahanId && !b ? '<option value="" selected>(bahan sudah dihapus)</option>' : '';
+    const hilang = item && item.bahanId && !b ? `<option value="" selected>${t('(bahan sudah dihapus)')}</option>` : '';
     return `<div class="baris" data-baris="resep">
-      <select name="rb" aria-label="Bahan">${hilang}${opsi(bahan, item && item.bahanId, (r) => r.data.nama)}</select>
-      <input name="rj" type="number" inputmode="decimal" min="0" step="any" placeholder="Jumlah" aria-label="Jumlah dipakai" value="${item ? esc(item.jumlah) : ''}">
+      <select name="rb" aria-label="${t('Bahan')}">${hilang}${opsi(bahan, item && item.bahanId, (r) => r.data.nama)}</select>
+      <input name="rj" type="number" inputmode="decimal" min="0" step="any" placeholder="${t('Jumlah')}" aria-label="${t('Jumlah dipakai')}" value="${item ? esc(item.jumlah) : ''}">
       <span class="unit small muted"></span>
-      <button type="button" class="hapus" data-act="hapus-baris" aria-label="Hapus baris">×</button></div>`;
+      <button type="button" class="hapus" data-act="hapus-baris" aria-label="${t('Hapus baris')}">×</button></div>`;
   }
 
   function barisPaket(item, diriId) {
     const produk = produkList().filter((p) => p.id !== diriId);
     return `<div class="baris" data-baris="paket">
-      <select name="pp" aria-label="Produk">${opsi(produk, item && item.produkId, (r) => r.data.nama)}</select>
-      <input name="pq" type="number" inputmode="decimal" min="0" step="any" placeholder="Jumlah" aria-label="Jumlah" value="${item ? esc(item.qty) : '1'}">
+      <select name="pp" aria-label="${t('Produk')}">${opsi(produk, item && item.produkId, (r) => r.data.nama)}</select>
+      <input name="pq" type="number" inputmode="decimal" min="0" step="any" placeholder="${t('Jumlah')}" aria-label="${t('Jumlah')}" value="${item ? esc(item.qty) : '1'}">
       <span class="unit small muted">×</span>
-      <button type="button" class="hapus" data-act="hapus-baris" aria-label="Hapus baris">×</button></div>`;
+      <button type="button" class="hapus" data-act="hapus-baris" aria-label="${t('Hapus baris')}">×</button></div>`;
   }
+
+  const labelStok = (mode) => t(mode === 'resep' ? 'Stok produk jadi (kosongkan kalau dibuat saat dipesan)' : 'Stok (kosongkan jika tidak dihitung)');
 
   function bukaFormProduk(id) {
     const rec = id ? store.get(id) : null;
@@ -394,58 +432,109 @@
     const resep = d.resep || { items: [], hasil: 1, biayaLain: 0 };
     const paket = d.paket || [];
     const adaBahan = bahanList().length > 0;
-    const seg = [['manual', 'Isi sendiri'], ['resep', 'Dari resep'], ['paket', 'Paket']]
+    ui.foto = d.foto || null;
+    const seg = [['manual', t('Isi sendiri')], ['resep', t('Dari resep')], ['paket', t('Paket')]]
       .map(([k, l]) => `<button type="button" data-act="mode-modal" data-m="${k}" aria-pressed="${mode === k}">${l}</button>`).join('');
     dialog.innerHTML = `<form id="formProduk" class="stack" method="dialog">
-      <div class="row"><h3>${rec ? 'Ubah produk' : 'Produk baru'}</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
-      <label class="field"><span>Nama produk</span><input name="nama" required value="${esc(d.nama)}" placeholder="Contoh: Keripik pedas 100 g"></label>
-      <label class="field"><span>Satuan jual</span><input name="satuan" value="${esc(d.satuan || '')}" placeholder="pcs, porsi, gelas"></label>
-      <div class="field"><span class="lbl">Modal per satuan</span><div class="seg kecil">${seg}</div></div>
+      <div class="row"><h3>${rec ? t('Ubah produk') : t('Produk baru')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="field"><span class="lbl">${t('Foto produk (boleh kosong)')}</span><div id="fotoProduk" class="foto-form"></div></div>
+      <label class="field"><span>${t('Nama produk')}</span><input name="nama" required value="${esc(d.nama)}" placeholder="${t('Contoh: Keripik pedas 100 g')}"></label>
+      <label class="field"><span>${t('Satuan jual')}</span><input name="satuan" value="${esc(d.satuan || '')}" placeholder="${t('pcs, porsi, gelas')}"></label>
+      <div class="field"><span class="lbl">${t('Modal per satuan')}</span><div class="seg kecil">${seg}</div></div>
       <input type="hidden" name="mode" value="${mode}">
       <div data-bagian="manual" ${mode === 'manual' ? '' : 'hidden'}>
-        <label class="field"><span>Modal per satuan (Rp)</span><input name="modal" type="number" inputmode="decimal" min="0" step="any" value="${mode === 'manual' ? esc(d.modal) : ''}"></label>
+        <label class="field"><span>${t('Modal per satuan (Rp)')}</span><input name="modal" type="number" inputmode="decimal" min="0" step="any" value="${mode === 'manual' ? esc(d.modal) : ''}"></label>
       </div>
       <div data-bagian="resep" class="hint stack" ${mode === 'resep' ? '' : 'hidden'}>
-        <div class="label">Resep satu adonan</div>
-        ${adaBahan ? '' : '<div class="small">Belum ada bahan baku. <button type="button" class="link" data-act="ke-bahan">Tambah bahan dulu</button></div>'}
-        <div class="small muted">Pilih bahan dan jumlah yang dipakai, dalam satuan bahan (mis. gram).</div>
+        <div class="label">${t('Resep satu adonan')}</div>
+        ${adaBahan ? '' : `<div class="small">${t('Belum ada bahan baku.')} <button type="button" class="link" data-act="ke-bahan">${t('Tambah bahan dulu')}</button></div>`}
+        <div class="small muted">${t('Pilih bahan dan jumlah yang dipakai, dalam satuan bahan (mis. gram).')}</div>
         <div id="barisResep" class="stack">${resep.items.length ? resep.items.map(barisResep).join('') : (adaBahan ? barisResep() : '')}</div>
-        ${adaBahan ? '<button type="button" class="link" data-act="tambah-bahan-resep">+ Tambah bahan</button>' : ''}
+        ${adaBahan ? `<button type="button" class="link" data-act="tambah-bahan-resep">${t('+ Tambah bahan')}</button>` : ''}
         <div class="two">
-          <label class="field"><span>Hasil jadi</span><input name="hasil" type="number" inputmode="decimal" min="1" step="any" value="${esc(resep.hasil || 1)}"></label>
-          <label class="field"><span>Biaya lain (Rp)</span><input name="biayaLain" type="number" inputmode="decimal" min="0" step="any" value="${esc(resep.biayaLain || '')}" placeholder="Gas, kemasan"></label>
+          <label class="field"><span>${t('Hasil jadi')}</span><input name="hasil" type="number" inputmode="decimal" min="1" step="any" value="${esc(resep.hasil || 1)}"></label>
+          <label class="field"><span>${t('Biaya lain (Rp)')}</span><input name="biayaLain" type="number" inputmode="decimal" min="0" step="any" value="${esc(resep.biayaLain || '')}" placeholder="${t('Gas, kemasan')}"></label>
         </div>
       </div>
       <div data-bagian="paket" class="hint stack" ${mode === 'paket' ? '' : 'hidden'}>
-        <div class="label">Isi paket</div>
-        <div class="small muted">Gabungkan beberapa produk jadi satu harga. Modal paket = jumlah modal isinya.</div>
+        <div class="label">${t('Isi paket')}</div>
+        <div class="small muted">${t('Gabungkan beberapa produk jadi satu harga. Modal paket = jumlah modal isinya.')}</div>
         <div id="barisPaket" class="stack">${paket.length ? paket.map((i) => barisPaket(i, id)).join('') : barisPaket(null, id)}</div>
-        <button type="button" class="link" data-act="tambah-isi-paket">+ Tambah produk</button>
+        <button type="button" class="link" data-act="tambah-isi-paket">${t('+ Tambah produk')}</button>
       </div>
-      <div class="row" id="baris-hpp" ${mode === 'manual' ? 'hidden' : ''}><span class="label">Modal per satuan</span><span class="total" id="hpp">–</span></div>
+      <div class="row" id="baris-hpp" ${mode === 'manual' ? 'hidden' : ''}><span class="label">${t('Modal per satuan')}</span><span class="total" id="hpp">–</span></div>
       <div class="hint stack">
-        <div class="row"><span class="label">Saran harga jual</span>
-          <label class="field sempit"><span class="small">Margin (%)</span><input name="target" type="number" inputmode="decimal" min="1" max="95" value="30"></label></div>
+        <div class="row"><span class="label">${t('Saran harga jual')}</span>
+          <label class="field sempit"><span class="small">${t('Margin (%)')}</span><input name="target" type="number" inputmode="decimal" min="1" max="95" value="30"></label></div>
         <div class="pilihan" id="pilihan"></div>
       </div>
-      <label class="field"><span>Harga jual (Rp)</span><input name="harga" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.harga)}"></label>
+      <label class="field"><span>${t('Harga jual (Rp)')}</span><input name="harga" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.harga)}"></label>
       <div class="small muted" id="ringkasLaba"></div>
-      <label class="field" data-bagian-stok ${mode === 'paket' ? 'hidden' : ''}><span>${mode === 'resep' ? 'Stok produk jadi (kosongkan kalau dibuat saat dipesan)' : 'Stok (kosongkan jika tidak dihitung)'}</span><input name="stok" type="number" inputmode="decimal" step="any" value="${d.stok == null ? '' : esc(d.stok)}"></label>
+      <label class="field" data-bagian-stok ${mode === 'paket' ? 'hidden' : ''}><span>${labelStok(mode)}</span><input name="stok" type="number" inputmode="decimal" step="any" value="${d.stok == null ? '' : esc(d.stok)}"></label>
       <div class="row">
-        ${rec ? `<button type="button" class="btn danger" data-act="produk-hapus" data-id="${rec.id}">Hapus</button>` : '<span></span>'}
-        <button class="btn primary">Simpan</button>
+        ${rec ? `<button type="button" class="btn danger" data-act="produk-hapus" data-id="${rec.id}">${t('Hapus')}</button>` : '<span></span>'}
+        <button class="btn primary">${t('Simpan')}</button>
       </div>
       <input type="hidden" name="produkId" value="${rec ? rec.id : ''}">
     </form>`;
     ui.pilihanHtml = null;
+    renderFotoForm();
     hitungForm();
     if (!dialog.open) dialog.showModal();
+  }
+
+  // Kotak foto di form produk: pratinjau, ambil dari kamera, pilih dari galeri, hapus.
+  function renderFotoForm() {
+    const el = $('#fotoProduk');
+    if (!el) return;
+    const pratinjau = ui.foto
+      ? `<img class="pratinjau" id="fotoPratinjau" src="${esc(ui.foto)}" alt="">`
+      : `<div class="pratinjau kosong" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg></div>`;
+    el.innerHTML = `${pratinjau}<div class="foto-aksi">
+      <label class="btn kecil"><input type="file" accept="image/*" capture="environment" data-foto hidden>${t('Ambil foto')}</label>
+      <label class="btn kecil"><input type="file" accept="image/*" data-foto id="fotoGaleri" hidden>${t('Pilih dari galeri')}</label>
+      ${ui.foto ? `<button type="button" class="link small danger" data-act="hapus-foto">${t('Hapus foto')}</button>` : ''}</div>`;
+  }
+
+  // Perkecil foto supaya ringan disimpan di perangkat dan dikirim ke cloud.
+  function kecilkanFoto(file) {
+    return new Promise((ok, gagal) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const MAKS = 480;
+        const skala = Math.min(1, MAKS / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * skala);
+        c.height = Math.round(img.naturalHeight * skala);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        ok(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); gagal(new Error('foto')); };
+      img.src = url;
+    });
+  }
+
+  async function pilihFoto(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      ui.foto = await kecilkanFoto(file);
+      renderFotoForm();
+    } catch (e) {
+      toast(t('Foto tidak bisa dibuka. Coba foto lain.'));
+    }
   }
 
   // Data produk dari isian form (belum disimpan).
   function bacaFormProduk(f) {
     const mode = f.mode.value;
     const d = { nama: f.nama.value.trim(), satuan: f.satuan.value.trim(), mode, harga: num(f.harga.value) };
+    if (ui.foto) d.foto = ui.foto;
     if (mode === 'resep') {
       d.resep = {
         items: $$('[data-baris="resep"]', f)
@@ -475,12 +564,12 @@
     const pilihan = H.pilihanHarga(d.modal, num(f.target.value));
     const html = d.modal > 0
       ? pilihan.map((p) => `<button type="button" class="pilih" data-act="pilih-harga" data-h="${p.harga}" aria-pressed="${p.harga === d.harga}">
-          <span class="small">${p.label}</span><span class="small muted">${p.target}%</span><b>${rp(p.harga)}</b></button>`).join('')
-      : '<div class="small muted">Isi modal dulu untuk melihat saran harga.</div>';
+          <span class="small">${t(p.label)}</span><span class="small muted">${p.target}%</span><b>${rp(p.harga)}</b></button>`).join('')
+      : `<div class="small muted">${t('Isi modal dulu untuk melihat saran harga.')}</div>`;
     // Jangan ganti tombol yang sama: kalau diganti di antara sentuhan, ketukannya hilang.
     if (ui.pilihanHtml !== html) { $('#pilihan').innerHTML = html; ui.pilihanHtml = html; }
     $('#ringkasLaba').textContent = d.harga > 0
-      ? `Laba per satuan ${rp(d.harga - d.modal)} · margin ${angka.format(H.margin(d.modal, d.harga))}%` + (d.harga < d.modal ? ' · harga di bawah modal!' : '')
+      ? t('Laba per satuan {laba} · margin {m}%', { laba: rp(d.harga - d.modal), m: angka.format(H.margin(d.modal, d.harga)) }) + (d.harga < d.modal ? ' · ' + t('harga di bawah modal!') : '')
       : '';
   }
 
@@ -492,7 +581,7 @@
     $('#baris-hpp').hidden = mode === 'manual';
     const stok = $('[data-bagian-stok]', f);
     stok.hidden = mode === 'paket';
-    stok.querySelector('span').textContent = mode === 'resep' ? 'Stok produk jadi (kosongkan kalau dibuat saat dipesan)' : 'Stok (kosongkan jika tidak dihitung)';
+    stok.querySelector('span').textContent = labelStok(mode);
     hitungForm();
   }
 
@@ -502,18 +591,18 @@
     const rec = id ? store.get(id) : null;
     const d = rec ? rec.data : { nama: '', satuan: 'gram', isi: 1000, harga: '', stok: null };
     dialog.innerHTML = `<form id="formBahan" class="stack" method="dialog">
-      <div class="row"><h3>${rec ? 'Ubah bahan' : 'Bahan baru'}</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
-      <label class="field"><span>Nama bahan</span><input name="nama" required value="${esc(d.nama)}" placeholder="Contoh: Gula pasir"></label>
+      <div class="row"><h3>${rec ? t('Ubah bahan') : t('Bahan baru')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <label class="field"><span>${t('Nama bahan')}</span><input name="nama" required value="${esc(d.nama)}" placeholder="${t('Contoh: Gula pasir')}"></label>
       <div class="two">
-        <label class="field"><span>Satuan pakai</span><input name="satuan" required value="${esc(d.satuan)}" placeholder="gram, ml, butir"></label>
-        <label class="field"><span>Isi per kemasan</span><input name="isi" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.isi)}"></label>
+        <label class="field"><span>${t('Satuan pakai')}</span><input name="satuan" required value="${esc(d.satuan)}" placeholder="${t('gram, ml, butir')}"></label>
+        <label class="field"><span>${t('Isi per kemasan')}</span><input name="isi" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.isi)}"></label>
       </div>
-      <label class="field"><span>Harga beli per kemasan (Rp)</span><input name="harga" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.harga)}"></label>
+      <label class="field"><span>${t('Harga beli per kemasan (Rp)')}</span><input name="harga" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.harga)}"></label>
       <div class="small muted" id="hargaSatuan"></div>
-      <label class="field"><span>Stok (kosongkan jika tidak dihitung)</span><input name="stok" type="number" inputmode="decimal" step="any" value="${d.stok == null ? '' : esc(d.stok)}"></label>
+      <label class="field"><span>${t('Stok (kosongkan jika tidak dihitung)')}</span><input name="stok" type="number" inputmode="decimal" step="any" value="${d.stok == null ? '' : esc(d.stok)}"></label>
       <div class="row">
-        ${rec ? `<button type="button" class="btn danger" data-act="bahan-hapus" data-id="${rec.id}">Hapus</button>` : '<span></span>'}
-        <button class="btn primary">Simpan</button>
+        ${rec ? `<button type="button" class="btn danger" data-act="bahan-hapus" data-id="${rec.id}">${t('Hapus')}</button>` : '<span></span>'}
+        <button class="btn primary">${t('Simpan')}</button>
       </div>
       <input type="hidden" name="bahanId" value="${rec ? rec.id : ''}">
     </form>`;
@@ -525,7 +614,9 @@
     const f = $('#formBahan');
     if (!f) return;
     const per = H.hargaSatuan({ isi: num(f.isi.value), harga: num(f.harga.value) });
-    $('#hargaSatuan').textContent = per ? `Harga per ${f.satuan.value || 'satuan'}: ${rupiah.format(per).replace(/,00$/, '')}${per < 1 ? ` (${angka.format(per)})` : ''}` : '';
+    $('#hargaSatuan').textContent = per
+      ? t('Harga per {satuan}: {harga}', { satuan: f.satuan.value || t('satuan'), harga: rupiah.format(per) }) + (per < 1 ? ` (${angka.format(per)})` : '')
+      : '';
   }
 
   // ---------- Dampak perubahan harga bahan ----------
@@ -538,18 +629,18 @@
       return;
     }
     dialog.innerHTML = `<div class="stack">
-      <div class="row"><h3>Cek harga jual</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
-      <div class="small muted">Harga bahan berubah, jadi modal produk ini ikut berubah. Saran harga menjaga margin seperti sebelumnya.</div>
+      <div class="row"><h3>${t('Cek harga jual')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="small muted">${t('Harga bahan berubah, jadi modal produk ini ikut berubah. Saran harga menjaga margin seperti sebelumnya.')}</div>
       <ul class="list">${list.map((p) => {
         const d = p.data;
         const baru = modalOf(p);
         const targetLama = H.margin(d.modal, d.harga);
         const saran = H.hargaSaran(baru, targetLama > 0 ? targetLama : 30);
         return `<li class="stack dampak"><div><div class="nama">${esc(d.nama)}</div>
-          <div class="small">Modal ${rp(d.modal)} → <b class="${baru > d.modal ? 'warn' : 'ok'}">${rp(baru)}</b></div>
-          <div class="small muted">Harga jual ${rp(d.harga)} · margin ${angka.format(targetLama)}% → ${angka.format(H.margin(baru, d.harga))}%</div></div>
-          <div class="row"><button class="btn kecil" data-act="dampak-biarkan" data-id="${p.id}">Harga tetap</button>
-          ${saran && saran !== d.harga ? `<button class="btn kecil primary" data-act="dampak-pakai" data-id="${p.id}" data-h="${saran}">Jual ${rp(saran)}</button>` : ''}</div></li>`;
+          <div class="small">${t('Modal')} ${rp(d.modal)} → <b class="${baru > d.modal ? 'warn' : 'ok'}">${rp(baru)}</b></div>
+          <div class="small muted">${t('Harga jual {harga} · margin {lama}% → {baru}%', { harga: rp(d.harga), lama: angka.format(targetLama), baru: angka.format(H.margin(baru, d.harga)) })}</div></div>
+          <div class="row"><button class="btn kecil" data-act="dampak-biarkan" data-id="${p.id}">${t('Harga tetap')}</button>
+          ${saran && saran !== d.harga ? `<button class="btn kecil primary" data-act="dampak-pakai" data-id="${p.id}" data-h="${saran}">${t('Jual {harga}', { harga: rp(saran) })}</button>` : ''}</div></li>`;
       }).join('')}</ul></div>`;
     if (!dialog.open) dialog.showModal();
   }
@@ -570,11 +661,11 @@
     const p = store.get(id);
     if (!p) return;
     dialog.innerHTML = `<form id="formProduksi" class="stack" method="dialog">
-      <div class="row"><h3>Produksi</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
-      <div><span class="nama label">${esc(p.data.nama)}</span> <span class="small muted">· stok sekarang ${angka.format(p.data.stok)} ${esc(p.data.satuan || '')}</span></div>
-      <label class="field"><span>Berapa kali resep dibuat?</span><input name="batch" type="number" inputmode="decimal" min="0" step="any" value="1" required></label>
+      <div class="row"><h3>${t('Produksi')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div><span class="nama label">${esc(p.data.nama)}</span> <span class="small muted">· ${t('stok sekarang')} ${angka.format(p.data.stok)} ${esc(p.data.satuan || '')}</span></div>
+      <label class="field"><span>${t('Berapa kali resep dibuat?')}</span><input name="batch" type="number" inputmode="decimal" min="0" step="any" value="1" required></label>
       <div class="small muted" id="ringkasProduksi"></div>
-      <button class="btn primary block">Tambah ke stok</button>
+      <button class="btn primary block">${t('Tambah ke stok')}</button>
       <input type="hidden" name="produkId" value="${id}">
     </form>`;
     hitungProduksi();
@@ -589,33 +680,30 @@
     const pakai = Object.entries(H.bahanProduksi(p, batch))
       .map(([bid, n]) => { const b = cari(bid); return b ? `${b.nama} ${angka.format(n)} ${b.satuan}` : null; })
       .filter(Boolean);
-    $('#ringkasProduksi').textContent = `Menambah ${angka.format((p.resep.hasil || 1) * batch)} ${p.satuan || ''} ke stok.` +
-      (pakai.length ? ` Memakai ${pakai.join(', ')}.` : '');
+    $('#ringkasProduksi').textContent = t('Menambah {n} {satuan} ke stok.', { n: angka.format((p.resep.hasil || 1) * batch), satuan: p.satuan || '' }) +
+      (pakai.length ? ' ' + t('Memakai {daftar}.', { daftar: pakai.join(', ') }) : '');
   }
 
   // ---------- Pengeluaran ----------
 
-  const hariIni = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
+  const tanggalIsian = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   function bukaFormPengeluaran(id) {
     const rec = id ? store.get(id) : null;
     const d = rec ? rec.data : { waktu: null, kategori: KATEGORI[0], catatan: '', jumlah: '' };
-    const tgl = d.waktu ? (() => { const w = new Date(d.waktu); return `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`; })() : hariIni();
+    const tgl = tanggalIsian(d.waktu ? new Date(d.waktu) : new Date());
     dialog.innerHTML = `<form id="formPengeluaran" class="stack" method="dialog">
-      <div class="row"><h3>${rec ? 'Ubah pengeluaran' : 'Catat pengeluaran'}</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
-      <label class="field"><span>Jumlah (Rp)</span><input name="jumlah" type="number" inputmode="numeric" min="0" step="any" required value="${esc(d.jumlah)}"></label>
+      <div class="row"><h3>${rec ? t('Ubah pengeluaran') : t('Catat pengeluaran')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <label class="field"><span>${t('Jumlah (Rp)')}</span><input name="jumlah" type="number" inputmode="numeric" min="0" step="any" required value="${esc(d.jumlah)}"></label>
       <div class="two">
-        <label class="field"><span>Jenis</span><select name="kategori">${KATEGORI.map((k) => `<option ${k === d.kategori ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
-        <label class="field"><span>Tanggal</span><input name="tanggal" type="date" required value="${tgl}"></label>
+        <label class="field"><span>${t('Jenis')}</span><select name="kategori">${KATEGORI.map((k) => `<option value="${k}" ${k === d.kategori ? 'selected' : ''}>${t(k)}</option>`).join('')}</select></label>
+        <label class="field"><span>${t('Tanggal')}</span><input name="tanggal" type="date" required value="${tgl}"></label>
       </div>
-      <label class="field"><span>Catatan (boleh kosong)</span><input name="catatan" value="${esc(d.catatan)}" placeholder="Contoh: listrik bulan Oktober"></label>
-      <div class="small muted">Belanja bahan baku tidak perlu dicatat di sini, karena sudah dihitung sebagai modal produk yang terjual.</div>
+      <label class="field"><span>${t('Catatan (boleh kosong)')}</span><input name="catatan" value="${esc(d.catatan)}" placeholder="${t('Contoh: listrik bulan Oktober')}"></label>
+      <div class="small muted">${t('Belanja bahan baku tidak perlu dicatat di sini, karena sudah dihitung sebagai modal produk yang terjual.')}</div>
       <div class="row">
-        ${rec ? `<button type="button" class="btn danger" data-act="pengeluaran-hapus" data-id="${rec.id}">Hapus</button>` : '<span></span>'}
-        <button class="btn primary">Simpan</button>
+        ${rec ? `<button type="button" class="btn danger" data-act="pengeluaran-hapus" data-id="${rec.id}">${t('Hapus')}</button>` : '<span></span>'}
+        <button class="btn primary">${t('Simpan')}</button>
       </div>
       <input type="hidden" name="pengeluaranId" value="${rec ? rec.id : ''}">
     </form>`;
@@ -624,18 +712,18 @@
 
   // ---------- Struk ----------
 
-  function strukBaris(t) {
+  function strukBaris(trx) {
     const p = profil();
-    const w = new Date(t.data.waktu).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const bayar = t.data.bayar || t.data.total;
+    const w = new Date(trx.data.waktu).toLocaleString(lokal(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const bayar = trx.data.bayar || trx.data.total;
     return {
-      judul: p.namaUsaha || 'Struk penjualan',
+      judul: p.namaUsaha || t('Struk penjualan'),
       kontak: p.kontak || '',
       waktu: w,
-      items: t.data.items.map((i) => ({ nama: i.nama, rinci: `${angka.format(i.qty)} × ${rp(i.harga)}`, jumlah: rp(i.qty * i.harga) })),
-      total: rp(t.data.total),
+      items: trx.data.items.map((i) => ({ nama: i.nama, rinci: `${angka.format(i.qty)} × ${rp(i.harga)}`, jumlah: rp(i.qty * i.harga) })),
+      total: rp(trx.data.total),
       bayar: rp(bayar),
-      kembali: rp(Math.max(0, bayar - t.data.total)),
+      kembali: rp(Math.max(0, bayar - trx.data.total)),
     };
   }
 
@@ -643,7 +731,7 @@
     return [
       `*${s.judul}*`, s.kontak, s.waktu, '',
       ...s.items.map((i) => `${i.nama}\n  ${i.rinci} = ${i.jumlah}`), '',
-      `*Total: ${s.total}*`, `Bayar: ${s.bayar}`, `Kembali: ${s.kembali}`, '', 'Terima kasih!',
+      `*${t('Total')}: ${s.total}*`, `${t('Bayar')}: ${s.bayar}`, `${t('Kembali')}: ${s.kembali}`, '', t('Terima kasih!'),
     ].filter((x, i) => x !== '' || i > 2).join('\n');
   }
 
@@ -660,7 +748,7 @@
     c.height = tinggi;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, tinggi);
-    ctx.fillStyle = '#0a2a6e';
+    ctx.fillStyle = '#fecb10';
     ctx.fillRect(0, 0, W, 12);
     let y = 80;
     ctx.textAlign = 'center';
@@ -707,36 +795,36 @@
       ctx.fillText(nilai, W - pad, y);
       y += besar ? 44 : 34;
     };
-    baris('Total', s.total, true);
-    baris('Bayar', s.bayar);
-    baris('Kembali', s.kembali);
+    baris(t('Total'), s.total, true);
+    baris(t('Bayar'), s.bayar);
+    baris(t('Kembali'), s.kembali);
     y += 16;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0a2a6e';
     ctx.font = font(24, true);
-    ctx.fillText('Terima kasih!', W / 2, y);
+    ctx.fillText(t('Terima kasih!'), W / 2, y);
     return c;
   }
 
   async function bukaStruk(id) {
-    const t = store.get(id);
-    if (!t) return;
+    const trx = store.get(id);
+    if (!trx) return;
     if (document.fonts && document.fonts.load) await document.fonts.load('italic 800 40px "Exo 2"').catch(() => {});
-    const s = strukBaris(t);
+    const s = strukBaris(trx);
     const canvas = strukGambar(s);
     const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/png'));
     if (ui.struk && ui.struk.url) URL.revokeObjectURL(ui.struk.url);
-    const nama = `struk-${t.data.waktu.slice(0, 16).replace(/[-:T]/g, '')}.png`;
+    const nama = `struk-${trx.data.waktu.slice(0, 16).replace(/[-:T]/g, '')}.png`;
     ui.struk = { blob, url: URL.createObjectURL(blob), teks: strukTeks(s), nama };
     const file = blob && window.File ? new File([blob], nama, { type: 'image/png' }) : null;
     const bisaBagi = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
     dialog.innerHTML = `<div class="stack">
-      <div class="row"><h3>Struk</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
-      <img class="struk" id="strukGambar" src="${ui.struk.url}" alt="Struk penjualan ${esc(s.total)}">
-      ${bisaBagi ? '<button class="btn primary block" data-act="struk-bagikan">Kirim gambar lewat WhatsApp</button>' : ''}
-      <a class="btn ${bisaBagi ? '' : 'primary'} block" href="${ui.struk.url}" download="${nama}">Simpan gambar</a>
-      <a class="btn block" href="https://wa.me/?text=${encodeURIComponent(ui.struk.teks)}" target="_blank" rel="noopener">Kirim sebagai teks</a>
-      ${bisaBagi ? '' : '<div class="small muted">Simpan gambarnya, lalu kirim dari WhatsApp seperti mengirim foto.</div>'}
+      <div class="row"><h3>${t('Struk')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <img class="struk" id="strukGambar" src="${ui.struk.url}" alt="${t('Struk penjualan')} ${esc(s.total)}">
+      ${bisaBagi ? `<button class="btn primary block" data-act="struk-bagikan">${t('Kirim gambar lewat WhatsApp')}</button>` : ''}
+      <a class="btn ${bisaBagi ? '' : 'primary'} block" href="${ui.struk.url}" download="${nama}">${t('Simpan gambar')}</a>
+      <a class="btn block" href="https://wa.me/?text=${encodeURIComponent(ui.struk.teks)}" target="_blank" rel="noopener">${t('Kirim sebagai teks')}</a>
+      ${bisaBagi ? '' : `<div class="small muted">${t('Simpan gambarnya, lalu kirim dari WhatsApp seperti mengirim foto.')}</div>`}
     </div>`;
     if (!dialog.open) dialog.showModal();
   }
@@ -752,11 +840,11 @@
   // ---------- Aksi ----------
 
   function toast(text) {
-    const t = $('#toast');
-    t.textContent = text;
-    t.classList.add('show');
+    const el = $('#toast');
+    el.textContent = text;
+    el.classList.add('show');
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+    toast.timer = setTimeout(() => el.classList.remove('show'), 2200);
   }
 
   // Tambah atau kurangi stok produk dan bahan sesuai `potong` (tanda -1 = kurangi).
@@ -794,18 +882,18 @@
     ui.bayar = '';
     ui.trxTerakhir = rec.id;
     render();
-    toast(`Penjualan ${rp(total)} tersimpan`);
+    toast(t('Penjualan {total} tersimpan', { total: rp(total) }));
   }
 
   function batalTransaksi(id) {
-    const t = store.get(id);
-    if (!t || !confirm('Batalkan penjualan ini? Stok produk dan bahan akan dikembalikan.')) return;
+    const trx = store.get(id);
+    if (!trx || !confirm(t('Batalkan penjualan ini? Stok produk dan bahan akan dikembalikan.'))) return;
     change(() => {
-      if (t.data.potong) {
-        ubahStok(t.data.potong, 1);
+      if (trx.data.potong) {
+        ubahStok(trx.data.potong, 1);
       } else {
         // Penjualan dari versi lama: hanya stok produk yang dipotong.
-        t.data.items.forEach((i) => {
+        trx.data.items.forEach((i) => {
           const p = store.get(i.produkId);
           if (p && p.data.stok != null) store.put('produk', Object.assign({}, p.data, { stok: p.data.stok + i.qty }), p.id);
         });
@@ -837,6 +925,7 @@
       case 'tambah-bahan-resep': $('#barisResep').insertAdjacentHTML('beforeend', barisResep()); hitungForm(); break;
       case 'tambah-isi-paket': $('#barisPaket').insertAdjacentHTML('beforeend', barisPaket(null, $('#formProduk').produkId.value)); hitungForm(); break;
       case 'hapus-baris': el.closest('.baris').remove(); hitungForm(); break;
+      case 'hapus-foto': ui.foto = null; renderFotoForm(); break;
       case 'ke-bahan': dialog.close(); ui.view = 'produk'; ui.produkTab = 'bahan'; render(); bukaFormBahan(); break;
       case 'pilih-harga': {
         const f = $('#formProduk');
@@ -845,7 +934,7 @@
         break;
       }
       case 'produk-hapus':
-        if (confirm('Hapus produk ini? Riwayat penjualan tetap tersimpan.')) {
+        if (confirm(t('Hapus produk ini? Riwayat penjualan tetap tersimpan.'))) {
           change(() => store.remove(id));
           delete ui.cart[id];
           dialog.close();
@@ -857,8 +946,8 @@
       case 'bahan-hapus': {
         const dipakai = produkList().filter((p) => p.data.resep && (p.data.resep.items || []).some((i) => i.bahanId === id));
         const tanya = dipakai.length
-          ? `Bahan ini dipakai di resep ${dipakai.map((p) => p.data.nama).join(', ')}. Kalau dihapus, modal produk itu tidak lagi menghitung bahan ini. Tetap hapus?`
-          : 'Hapus bahan ini?';
+          ? t('Bahan ini dipakai di resep {daftar}. Kalau dihapus, modal produk itu tidak lagi menghitung bahan ini. Tetap hapus?', { daftar: dipakai.map((p) => p.data.nama).join(', ') })
+          : t('Hapus bahan ini?');
         if (confirm(tanya)) {
           change(() => store.remove(id));
           dialog.close();
@@ -873,7 +962,7 @@
       case 'pengeluaran-baru': bukaFormPengeluaran(); break;
       case 'pengeluaran-ubah': bukaFormPengeluaran(id); break;
       case 'pengeluaran-hapus':
-        if (confirm('Hapus pengeluaran ini?')) {
+        if (confirm(t('Hapus pengeluaran ini?'))) {
           change(() => store.remove(id));
           dialog.close();
           render();
@@ -904,8 +993,9 @@
       case 'simpan-profil':
         change(() => store.put('profil', { namaUsaha: $('#namaUsahaInput').value.trim(), kontak: $('#kontakUsahaInput').value.trim() }, 'profil'));
         render();
-        toast('Profil tersimpan');
+        toast(t('Profil tersimpan'));
         break;
+      case 'setel': ubahPengaturan({ [el.dataset.nama]: el.dataset.nilai }); break;
       case 'mode': ui.authMode = el.dataset.m; ui.authMsg = null; render(); break;
       case 'sinkron': syncNow(true); break;
       case 'keluar': keluar(); break;
@@ -925,8 +1015,9 @@
     if (form === 'formProduksi') hitungProduksi();
   });
 
-  // Pilihan di <select> memicu `change`, bukan `input`, di sebagian browser.
+  // Pilihan di <select> dan file foto memicu `change`, bukan `input`, di sebagian browser.
   document.addEventListener('change', (e) => {
+    if (e.target.matches('[data-foto]')) { pilihFoto(e.target); return; }
     if (e.target.form && e.target.form.id === 'formProduk') hitungForm();
   });
 
@@ -935,12 +1026,12 @@
     if (f.id === 'formProduk') {
       e.preventDefault();
       const d = bacaFormProduk(f);
-      if (d.mode === 'resep' && !d.resep.items.length) { toast('Tambahkan minimal satu bahan ke resep'); return; }
-      if (d.mode === 'paket' && !d.paket.length) { toast('Tambahkan minimal satu produk ke paket'); return; }
+      if (d.mode === 'resep' && !d.resep.items.length) { toast(t('Tambahkan minimal satu bahan ke resep')); return; }
+      if (d.mode === 'paket' && !d.paket.length) { toast(t('Tambahkan minimal satu produk ke paket')); return; }
       change(() => store.put('produk', d, f.produkId.value || undefined));
       dialog.close();
       render();
-      toast('Produk tersimpan');
+      toast(t('Produk tersimpan'));
     }
     if (f.id === 'formBahan') {
       e.preventDefault();
@@ -954,7 +1045,7 @@
         stok: stok === '' ? null : num(stok),
       };
       change(() => store.put('bahan', d, id || undefined));
-      toast('Bahan tersimpan');
+      toast(t('Bahan tersimpan'));
       if (produkBerubah().length) {
         render();
         bukaDampak();
@@ -973,7 +1064,7 @@
           store.put('produk', Object.assign({}, p.data, { stok: p.data.stok + (p.data.resep.hasil || 1) * batch }), id);
           ubahStok({ bahan: H.bahanProduksi(p.data, batch) }, -1);
         });
-        toast('Stok bertambah');
+        toast(t('Stok bertambah'));
       }
       dialog.close();
       render();
@@ -991,7 +1082,7 @@
       }, f.pengeluaranId.value || undefined));
       dialog.close();
       render();
-      toast('Pengeluaran tersimpan');
+      toast(t('Pengeluaran tersimpan'));
     }
     if (f.id === 'formAuth') {
       e.preventDefault();
@@ -1002,7 +1093,7 @@
       const { error } = await cloud.client.auth.updateUser({ password: f.password.value });
       if (error) { ui.authMsg = { type: 'err', text: pesanAuth(error) }; render(); return; }
       cloud.recovering = false;
-      ui.authMsg = { type: 'ok', text: 'Kata sandi baru tersimpan.' };
+      ui.authMsg = { type: 'ok', text: t('Kata sandi baru tersimpan.') };
       render();
     }
   });
@@ -1011,11 +1102,11 @@
 
   function pesanAuth(error) {
     const m = (error && error.message) || String(error);
-    if (/Invalid login credentials/i.test(m)) return 'Email atau kata sandi salah.';
-    if (/Email not confirmed/i.test(m)) return 'Email belum dikonfirmasi. Buka email dari Kelola dan klik tautan konfirmasi.';
-    if (/already registered/i.test(m)) return 'Email ini sudah terdaftar. Silakan masuk.';
-    if (/Password should be/i.test(m)) return 'Kata sandi minimal 6 karakter.';
-    if (/fetch|network/i.test(m)) return 'Tidak ada koneksi internet. Coba lagi nanti.';
+    if (/Invalid login credentials/i.test(m)) return t('Email atau kata sandi salah.');
+    if (/Email not confirmed/i.test(m)) return t('Email belum dikonfirmasi. Buka email dari Kelola dan klik tautan konfirmasi.');
+    if (/already registered/i.test(m)) return t('Email ini sudah terdaftar. Silakan masuk.');
+    if (/Password should be/i.test(m)) return t('Kata sandi minimal 6 karakter.');
+    if (/fetch|network/i.test(m)) return t('Tidak ada koneksi internet. Coba lagi nanti.');
     return m;
   }
 
@@ -1031,11 +1122,11 @@
       if (ui.authMode === 'daftar') {
         const { data, error } = await auth.signUp({ email, password: f.password.value, options: { emailRedirectTo: redirect } });
         if (error) throw error;
-        if (!data.session) ui.authMsg = { type: 'ok', text: `Hampir selesai. Kami mengirim email konfirmasi ke ${email}. Klik tautannya, lalu masuk di sini.` };
+        if (!data.session) ui.authMsg = { type: 'ok', text: t('Hampir selesai. Kami mengirim email konfirmasi ke {email}. Klik tautannya, lalu masuk di sini.', { email }) };
       } else if (ui.authMode === 'lupa') {
         const { error } = await auth.resetPasswordForEmail(email, { redirectTo: redirect });
         if (error) throw error;
-        ui.authMsg = { type: 'ok', text: `Tautan untuk membuat kata sandi baru sudah dikirim ke ${email}.` };
+        ui.authMsg = { type: 'ok', text: t('Tautan untuk membuat kata sandi baru sudah dikirim ke {email}.', { email }) };
       } else {
         const { error } = await auth.signInWithPassword({ email, password: f.password.value });
         if (error) throw error;
@@ -1051,15 +1142,15 @@
     if (navigator.onLine) await syncNow(false).catch(() => {});
     const pending = store.dirtyRecords().length;
     const tanya = pending
-      ? `Masih ada ${pending} perubahan yang belum terkirim ke cloud dan akan hilang jika Anda keluar sekarang. Tetap keluar?`
-      : 'Keluar dari akun? Data di perangkat ini akan dihapus, tapi tetap aman di cloud.';
+      ? t('Masih ada {n} perubahan yang belum terkirim ke cloud dan akan hilang jika Anda keluar sekarang. Tetap keluar?', { n: pending })
+      : t('Keluar dari akun? Data di perangkat ini akan dihapus, tapi tetap aman di cloud.');
     if (!confirm(tanya)) return;
     await cloud.client.auth.signOut().catch(() => {});
     setUser(null);
     store.clear();
     ui.cart = {};
     ui.authMode = 'masuk';
-    ui.authMsg = { type: 'ok', text: 'Anda sudah keluar.' };
+    ui.authMsg = { type: 'ok', text: t('Anda sudah keluar.') };
     render();
   }
 
@@ -1095,11 +1186,11 @@
   function syncNow(loud) {
     if (!cloud.sync || !navigator.onLine) {
       renderBadge();
-      if (loud) toast('Tidak ada koneksi internet');
+      if (loud) toast(t('Tidak ada koneksi internet'));
       return Promise.resolve();
     }
     return cloud.sync.run().then(
-      () => { if (loud) toast('Data sudah sinkron'); },
+      () => { if (loud) toast(t('Data sudah sinkron')); },
       (err) => { console.warn('Sinkronisasi gagal', err); },
     );
   }
@@ -1130,16 +1221,19 @@
 
   // Kalau data diubah di tab lain pada perangkat yang sama, muat ulang supaya tidak saling menimpa.
   window.addEventListener('storage', (e) => {
-    if (e.key === KelolaStore.KEY) location.reload();
+    if (e.key === KelolaStore.KEY || e.key === KelolaBahasa.KEY) location.reload();
   });
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', terapkanTema);
+
+  terapkanTema();
   initCloud();
   render();
 
   // Untuk pengujian.
-  window.Kelola = { store, cloud, ui, H };
+  window.Kelola = { store, cloud, ui, H, setel };
 })();
