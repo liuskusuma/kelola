@@ -1,6 +1,6 @@
 // Supaya Kelola tetap terbuka tanpa internet.
 // Naikkan VERSION setiap kali ada file yang berubah.
-const VERSION = 'kelola-v3';
+const VERSION = 'kelola-v4';
 const FILES = [
   './',
   'index.html',
@@ -16,6 +16,7 @@ const FILES = [
   'vendor/fonts/exo-2-latin-800-italic.woff2',
   'js/config.js',
   'js/store.js',
+  'js/hitung.js',
   'js/sync.js',
   'js/app.js',
 ];
