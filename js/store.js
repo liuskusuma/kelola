@@ -77,6 +77,11 @@
       return rec && !rec.deleted ? rec : null;
     }
 
+    // Pernah ada di perangkat ini, termasuk yang sudah dihapus.
+    function has(id) {
+      return !!state.records[id];
+    }
+
     function list(kind) {
       return Object.values(state.records).filter((r) => r.kind === kind && !r.deleted);
     }
@@ -158,7 +163,7 @@
       return () => listeners.delete(fn);
     }
 
-    return { put, remove, get, list, dirtyRecords, markClean, applyRemote, getMeta, setMeta, claim, clear, subscribe };
+    return { put, remove, get, has, list, dirtyRecords, markClean, applyRemote, getMeta, setMeta, claim, clear, subscribe };
   }
 
   const api = { createStore, uuid, KEY };

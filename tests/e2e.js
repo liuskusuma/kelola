@@ -10,8 +10,14 @@ const SB = 'https://demo.supabase.co';
 const rows = new Map();
 let clock = Date.now();
 const USER = { id: '11111111-1111-4111-8111-111111111111', email: 'lius@contoh.id', aud: 'authenticated', role: 'authenticated' };
+const STAFF = { id: '22222222-2222-4222-8222-222222222222', email: 'budi@contoh.id', aud: 'authenticated', role: 'authenticated' };
+const USERS = [USER, STAFF];
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const jwt = b64({ alg: 'HS256', typ: 'JWT' }) + '.' + b64({ sub: USER.id, email: USER.email, exp: Math.floor(Date.now() / 1000) + 3600, role: 'authenticated', aud: 'authenticated' }) + '.sig';
+const jwtUntuk = (u) => b64({ alg: 'HS256', typ: 'JWT' }) + '.' + b64({ sub: u.id, email: u.email, exp: Math.floor(Date.now() / 1000) + 3600, role: 'authenticated', aud: 'authenticated' }) + '.sig';
+// Tabel staff tiruan (lihat supabase/staff.sql).
+const staff = [];
+const undangan = new Map();
+const penjualan = new Map();
 const log = [];
 const norm = (s) => s.replace(/\u00a0/g, ' ');
 
@@ -21,17 +27,23 @@ async function mock(route) {
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*', 'content-type': 'application/json' };
   if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
   log.push(req.method() + ' ' + url.pathname + url.search);
+  // Pengguna yang memanggil, dari token di header (seperti auth.uid() di Supabase).
+  let uid = null;
+  try { uid = JSON.parse(Buffer.from((req.headers().authorization || '').split('.')[1], 'base64url')).sub; } catch (e) { /* anon */ }
+  const json = (status, data) => route.fulfill({ status, headers: cors, body: data === undefined ? '' : JSON.stringify(data) });
+  const eq = (k) => { const v = url.searchParams.get(k); return v ? v.replace(/^eq\./, '') : null; };
   if (url.pathname === '/auth/v1/token') {
     const body = JSON.parse(req.postData());
-    if (body.password !== 'rahasia123') return route.fulfill({ status: 400, headers: cors, body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials', message: 'Invalid login credentials' }) });
-    return route.fulfill({ status: 200, headers: cors, body: JSON.stringify({ access_token: jwt, token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'r', user: USER }) });
+    const user = USERS.find((u) => u.email === body.email);
+    if (!user || body.password !== 'rahasia123') return route.fulfill({ status: 400, headers: cors, body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials', message: 'Invalid login credentials' }) });
+    return route.fulfill({ status: 200, headers: cors, body: JSON.stringify({ access_token: jwtUntuk(user), token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'r', user }) });
   }
   if (url.pathname === '/auth/v1/logout') return route.fulfill({ status: 204, headers: cors });
   if (url.pathname === '/rest/v1/records' && req.method() === 'GET') {
     const gte = url.searchParams.get('server_updated_at');
     const since = gte ? Date.parse(gte.replace('gte.', '')) : 0;
     const limit = +url.searchParams.get('limit') || 1000;
-    const out = [...rows.values()].filter((r) => Date.parse(r.server_updated_at) >= since)
+    const out = [...rows.values()].filter((r) => r.user_id === uid && Date.parse(r.server_updated_at) >= since)
       .sort((a, b) => Date.parse(a.server_updated_at) - Date.parse(b.server_updated_at)).slice(0, limit)
       .map(({ user_id, ...r }) => r);
     return route.fulfill({ status: 200, headers: cors, body: JSON.stringify(out) });
@@ -40,13 +52,68 @@ async function mock(route) {
     assert.equal(url.searchParams.get('on_conflict'), 'user_id,id');
     const body = JSON.parse(req.postData());
     (Array.isArray(body) ? body : [body]).forEach((r) => {
-      assert.equal(r.user_id, USER.id);
+      assert.equal(r.user_id, uid);
       const old = rows.get(r.id);
       if (old && Date.parse(r.updated_at) < Date.parse(old.updated_at)) return;
       clock += 10;
       rows.set(r.id, { ...r, server_updated_at: new Date(clock).toISOString() });
     });
     return route.fulfill({ status: 201, headers: cors, body: '' });
+  }
+  if (url.pathname === '/rest/v1/staff' && req.method() === 'GET') {
+    const out = staff.filter((x) => (x.owner_id === uid || x.staff_id === uid)
+      && (!eq('staff_id') || x.staff_id === eq('staff_id')) && (!eq('owner_id') || x.owner_id === eq('owner_id')));
+    return json(200, out);
+  }
+  if (url.pathname === '/rest/v1/staff' && req.method() === 'DELETE') {
+    const i = staff.findIndex((x) => x.staff_id === eq('staff_id') && x.owner_id === uid);
+    if (i >= 0) staff.splice(i, 1);
+    return json(204);
+  }
+  if (url.pathname === '/rest/v1/undangan_staff' && req.method() === 'POST') {
+    assert.ok(!staff.some((x) => x.staff_id === uid), 'staff tidak boleh membuat undangan');
+    const body = JSON.parse(req.postData());
+    undangan.set(body.kode, { owner_id: uid, dipakai_oleh: null });
+    return json(201);
+  }
+  if (url.pathname === '/rest/v1/rpc/gabung_staff') {
+    const body = JSON.parse(req.postData());
+    const u = undangan.get(String(body.kode_undangan).trim().toUpperCase());
+    if (!u || u.dipakai_oleh) return json(400, { code: 'P0001', message: 'Kode undangan tidak berlaku' });
+    if (u.owner_id === uid) return json(400, { code: 'P0001', message: 'Kode ini milik akun Anda sendiri' });
+    u.dipakai_oleh = uid;
+    staff.push({ staff_id: uid, owner_id: u.owner_id, nama: body.nama_staff, created_at: new Date().toISOString() });
+    return json(200, u.owner_id);
+  }
+  if (url.pathname === '/rest/v1/rpc/produk_kasir') {
+    const st = staff.find((x) => x.staff_id === uid);
+    if (!st) return json(400, { code: 'P0001', message: 'Bukan akun staff' });
+    const milik = [...rows.values()].filter((r) => r.user_id === st.owner_id && !r.deleted);
+    const tertunda = {};
+    [...penjualan.values()].filter((j) => j.owner_id === st.owner_id && !j.diproses)
+      .forEach((j) => j.data.items.forEach((i) => { tertunda[i.produkId] = (tertunda[i.produkId] || 0) + i.qty; }));
+    const prof = milik.find((r) => r.kind === 'profil');
+    return json(200, {
+      usaha: { namaUsaha: prof ? prof.data.namaUsaha : null, kontak: prof ? prof.data.kontak : null },
+      produk: milik.filter((r) => r.kind === 'produk').map((r) => ({
+        id: r.id, nama: r.data.nama, harga: r.data.harga, satuan: r.data.satuan, foto: r.data.foto, mode: r.data.mode, paket: r.data.paket,
+        stok: typeof r.data.stok === 'number' ? r.data.stok - (tertunda[r.id] || 0) : null,
+      })),
+    });
+  }
+  if (url.pathname === '/rest/v1/penjualan_staff' && req.method() === 'POST') {
+    const st = staff.find((x) => x.staff_id === uid);
+    const body = JSON.parse(req.postData());
+    for (const j of Array.isArray(body) ? body : [body]) {
+      if (!st || st.owner_id !== j.owner_id) return json(403, { code: '42501', message: 'new row violates row-level security policy' });
+      if (!penjualan.has(j.id)) penjualan.set(j.id, { ...j, staff_id: uid, diproses: false, created_at: new Date().toISOString() });
+    }
+    return json(201);
+  }
+  if (url.pathname === '/rest/v1/penjualan_staff' && req.method() === 'PATCH') {
+    const out = [...penjualan.values()].filter((j) => j.owner_id === uid && j.owner_id === eq('owner_id') && !j.diproses);
+    out.forEach((j) => { j.diproses = true; });
+    return json(200, out.map(({ id, staff_id, data, created_at }) => ({ id, staff_id, data, created_at })));
   }
   return route.fulfill({ status: 404, headers: cors, body: '{}' });
 }
@@ -270,7 +337,92 @@ async function device(browser) {
   await p.click('#pengaturan >> text=Bahasa Indonesia');
   assert.equal(await p.textContent('#judul'), 'Akun');
 
-  assert.deepEqual(hp.errors.concat(laptop.errors), []);
+  // 17. Owner membuat kode undangan staff.
+  await p.click('#staff >> text=Buat kode undangan');
+  const kode = (await p.textContent('#kodeUndangan .kode')).trim();
+  assert.match(kode, /^[A-Z2-9]{6}$/);
+
+  // 18. Staff masuk di HP sendiri dan bergabung dengan kode itu.
+  const hpStaff = await device(browser);
+  const s = hpStaff.page;
+  await s.click('nav >> text=Akun');
+  await s.fill('input[name=email]', STAFF.email);
+  await s.fill('input[name=password]', 'rahasia123');
+  await s.click('#formAuth button');
+  await s.waitForSelector('#formGabung');
+  await s.fill('#formGabung input[name=kode]', 'SALAH1');
+  await s.fill('#formGabung input[name=nama]', 'Budi');
+  await s.click('#formGabung button');
+  await s.waitForSelector('.msg.err');
+  assert.equal(norm(await s.textContent('.msg.err')), 'Kode undangan salah, sudah dipakai, atau sudah kedaluwarsa.');
+  await s.fill('#formGabung input[name=kode]', kode.toLowerCase());
+  await s.fill('#formGabung input[name=nama]', 'Budi');
+  await s.click('#formGabung button');
+  await s.waitForSelector('.tile:has-text("Keripik pedas")');
+  assert.deepEqual(await s.locator('nav.tabs button:visible').allInnerTexts(), ['Kasir', 'Akun']);
+  assert.ok(norm(await s.textContent('.tile:has-text("Keripik pedas")')).includes('Stok 14'));
+  const simpananStaff = await s.evaluate(() => Object.keys(localStorage).map((k) => localStorage.getItem(k)).join(''));
+  assert.ok(!/"(modal|resep|biayaLain|laba)":/.test(simpananStaff), 'modal tidak sampai ke HP staff');
+
+  // 19. Staff menjual 2 keripik; penjualan terkirim ke owner.
+  await s.click('.tile:has-text("Keripik pedas")');
+  await s.click('.tile:has-text("Keripik pedas")');
+  await s.click('text=Simpan penjualan');
+  await s.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
+  assert.equal(penjualan.size, 1);
+  assert.ok(norm(await s.textContent('.tile:has-text("Keripik pedas")')).includes('Stok 12'));
+  await s.click('#trxTerakhir button');
+  await s.waitForSelector('#strukGambar');
+  await s.click('dialog >> text=Tutup');
+  await s.click('nav >> text=Akun');
+  assert.ok(norm(await s.textContent('main')).includes('1 · Rp 22.000'));
+
+  // 20. Owner sinkron: penjualan staff masuk laporan dengan laba, stok terpotong, tidak dobel.
+  const jmlTrx = () => p.evaluate(() => Kelola.store.list('transaksi').length);
+  const sebelum = await jmlTrx();
+  await p.click('text=Sinkronkan sekarang');
+  await p.waitForFunction((n) => Kelola.store.list('transaksi').length === n + 1, sebelum, { timeout: 10000 });
+  await p.click('text=Sinkronkan sekarang');
+  await p.waitForTimeout(500);
+  assert.equal(await jmlTrx(), sebelum + 1);
+  const trxStaff = await p.evaluate(() => Kelola.store.list('transaksi').find((r) => r.data.staff).data);
+  assert.equal(trxStaff.staff, 'Budi');
+  assert.equal(trxStaff.total, 22000);
+  assert.equal(trxStaff.laba, 22000 - 2 * 6000);
+  await p.click('nav >> text=Laporan');
+  await p.click('text=Hari ini');
+  assert.ok(norm(await p.textContent('main')).includes('oleh Budi'));
+  await p.click('nav >> text=Produk');
+  assert.ok(norm(await p.textContent('li:has-text("Keripik pedas")')).includes('stok 12'));
+
+  // 21. Owner menghapus staff: akun itu tidak bisa memakai kasir lagi.
+  await p.click('nav >> text=Akun');
+  await p.waitForSelector('#staff li:has-text("Budi")');
+  await p.click('#staff li:has-text("Budi") >> text=Hapus');
+  await p.waitForSelector('#staff >> text=Belum ada staff.');
+  await s.click('text=Sinkronkan sekarang');
+  await s.waitForSelector('.msg.err');
+  assert.equal(norm(await s.textContent('.msg.err')), 'Akun ini sudah tidak terdaftar sebagai staff. Hubungi owner.');
+
+  // 22. Mode kasir dengan PIN di HP bersama.
+  await p.fill('#formKunci input[name=pin]', '1234');
+  await p.click('#formKunci button');
+  await p.waitForSelector('.tile');
+  assert.deepEqual(await p.locator('nav.tabs button:visible').allInnerTexts(), ['Kasir', 'Akun']);
+  await p.reload();
+  await p.waitForSelector('.tile');
+  assert.deepEqual(await p.locator('nav.tabs button:visible').allInnerTexts(), ['Kasir', 'Akun']);
+  await p.click('nav >> text=Akun');
+  await p.fill('#formBukaKunci input[name=pin]', '9999');
+  await p.click('#formBukaKunci button');
+  await p.waitForSelector('.msg.err');
+  assert.equal(norm(await p.textContent('.msg.err')), 'PIN salah.');
+  await p.fill('#formBukaKunci input[name=pin]', '1234');
+  await p.click('#formBukaKunci button');
+  await p.waitForSelector('#formKunci');
+  assert.equal(await p.locator('nav.tabs button:visible').count(), 4);
+
+  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors), []);
   await browser.close();
   console.log('E2E OK');
 })().catch((e) => { console.error(e); console.error(log.slice(-15).join('\n')); process.exit(1); });
