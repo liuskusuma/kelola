@@ -87,7 +87,7 @@ async function device(browser) {
   await p.click('nav >> text=Laporan');
   assert.ok((norm(await p.textContent('.stats'))).includes('Rp 30.000'));
   assert.ok((norm(await p.textContent('.stats'))).includes('Rp 12.000'));
-  assert.equal(norm(await p.textContent('#syncBadge')), 'Hanya di perangkat ini');
+  assert.equal(norm(await p.textContent('#syncBadge')), 'Lokal');
 
   // 3. Login: kata sandi salah, lalu benar. Data lokal terkirim ke cloud.
   await p.click('nav >> text=Akun');
@@ -99,7 +99,7 @@ async function device(browser) {
   assert.equal(await p.inputValue('input[name=email]'), USER.email);
   await p.fill('input[name=password]', 'rahasia123');
   await p.click('#formAuth button');
-  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan di cloud', null, { timeout: 5000 });
+  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 5000 });
   assert.equal(rows.size, 2, 'produk + transaksi ada di cloud');
 
   // 4. Perangkat kedua login dan melihat data yang sama.
@@ -109,7 +109,7 @@ async function device(browser) {
   await l.fill('input[name=email]', USER.email);
   await l.fill('input[name=password]', 'rahasia123');
   await l.click('#formAuth button');
-  await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan di cloud');
+  await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan');
   await l.click('nav >> text=Produk');
   const teks = norm(await l.textContent('main'));
   assert.ok(teks.includes('Keripik pedas') && teks.includes('stok 17'), teks);
@@ -118,7 +118,7 @@ async function device(browser) {
   await l.click('text=Ubah');
   await l.fill('input[name=harga]', '11000');
   await l.click('#formProduk button.primary');
-  await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan di cloud');
+  await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan');
   await p.click('nav >> text=Akun');
   await p.click('text=Sinkronkan sekarang');
   await p.waitForTimeout(500);
@@ -132,12 +132,12 @@ async function device(browser) {
   await p.click('text=Simpan penjualan');
   assert.ok((norm(await p.textContent('#syncBadge'))).startsWith('Offline'));
   await hp.ctx.setOffline(false);
-  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan di cloud', null, { timeout: 10000 });
+  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
   assert.equal([...rows.values()].filter((r) => r.kind === 'transaksi').length, 2);
 
   // 7. Data tetap ada setelah aplikasi dibuka ulang.
   await l.reload();
-  await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan di cloud');
+  await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan');
   await l.click('nav >> text=Laporan');
   await l.click('text=Semua');
   assert.ok((norm(await l.textContent('.stats'))).includes('Rp 41.000'), norm(await l.textContent('.stats')));

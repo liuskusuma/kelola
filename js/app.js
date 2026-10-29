@@ -66,69 +66,97 @@
 
   // ---------- Tampilan ----------
 
+  const JUDUL = {
+    kasir: ['Kasir', 'Catat penjualan'],
+    produk: ['Produk', 'Harga jual & stok'],
+    laporan: ['Laporan', 'Omzet & laba'],
+    akun: ['Akun', 'Profil & simpan ke cloud'],
+  };
+
   function render() {
-    document.querySelectorAll('nav button').forEach((b) => {
+    document.querySelectorAll('nav.tabs button').forEach((b) => {
       if (b.dataset.go === ui.view) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
-    $('#namaUsaha').textContent = profil().namaUsaha || '';
+    const [judul, sub] = JUDUL[ui.view];
+    $('#judul').textContent = judul;
+    $('#subjudul').textContent = profil().namaUsaha || sub;
     renderBadge();
+    renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
     viewEl.innerHTML = views[ui.view]();
   }
 
   function renderBadge() {
     const badge = $('#syncBadge');
-    let text = 'Hanya di perangkat ini';
-    let cls = 'warn';
+    let text = 'Lokal';
+    let title = 'Data hanya tersimpan di perangkat ini. Masuk untuk menyimpan ke cloud.';
+    let cls = '';
     if (cloud.user) {
       const pending = store.dirtyRecords().length;
-      if (!navigator.onLine) { text = pending ? `Offline · ${pending} belum terkirim` : 'Offline'; cls = 'warn'; }
-      else if (cloud.status === 'syncing') { text = 'Menyinkronkan…'; cls = ''; }
-      else if (cloud.status === 'error') { text = 'Gagal sinkron'; cls = 'err'; }
-      else if (pending) { text = `${pending} belum terkirim`; cls = 'warn'; }
-      else { text = 'Tersimpan di cloud'; cls = 'ok'; }
-    } else if (!cloudReady) {
-      cls = '';
+      if (!navigator.onLine) { text = 'Offline'; title = pending ? `${pending} perubahan belum terkirim` : 'Tidak ada koneksi'; cls = 'warn'; }
+      else if (cloud.status === 'syncing') { text = 'Sinkron…'; title = 'Menyinkronkan'; cls = 'busy'; }
+      else if (cloud.status === 'error') { text = 'Gagal'; title = 'Gagal sinkron'; cls = 'err'; }
+      else if (pending) { text = `${pending} tertunda`; title = `${pending} perubahan belum terkirim`; cls = 'warn'; }
+      else { text = 'Tersimpan'; title = 'Semua data tersimpan di cloud'; cls = 'ok'; }
     }
-    badge.textContent = text;
-    badge.className = 'badge ' + cls;
+    badge.innerHTML = `<span class="dot"></span><span>${esc(text)}</span>`;
+    badge.title = title;
+    badge.setAttribute('aria-label', title);
+    badge.className = 'sync ' + cls;
+  }
+
+  function isiKeranjang() {
+    return Object.entries(ui.cart)
+      .map(([id, qty]) => ({ rec: store.get(id), qty }))
+      .filter((x) => x.rec);
+  }
+
+  // Bar navy di atas tab bar, seperti bar total di Bagi Rata.
+  function renderSummary() {
+    const items = ui.view === 'kasir' ? isiKeranjang() : [];
+    const qty = items.reduce((s, x) => s + x.qty, 0);
+    const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
+    document.body.classList.toggle('ada-ringkasan', qty > 0);
+    $('#summary').innerHTML = `<span>Keranjang · ${angka.format(qty)} item</span><b>${rp(total)} ›</b>`;
   }
 
   function viewKasir() {
     const produk = produkList();
     if (!produk.length) {
-      return `<h2>Kasir</h2><div class="card empty">Belum ada produk.<br><br>
+      return `<div class="group-title">Mulai berjualan</div><div class="card empty stack">
+        <div>Belum ada produk. Tambahkan produk dulu, lalu ketuk produk di sini setiap kali ada pembeli.</div>
         <button class="btn primary" data-act="produk-baru">Tambah produk pertama</button></div>`;
     }
-    const items = Object.entries(ui.cart)
-      .map(([id, qty]) => ({ rec: store.get(id), qty }))
-      .filter((x) => x.rec);
+    const items = isiKeranjang();
     const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
     const bayar = num(ui.bayar);
     const tiles = produk.map((p) => {
       const d = p.data;
       const habis = d.stok != null && (d.stok - (ui.cart[p.id] || 0)) <= 0;
       const stok = d.stok != null ? `<div class="small muted">Stok ${angka.format(d.stok)} ${esc(d.satuan || '')}</div>` : '';
+      const jumlah = ui.cart[p.id] ? `<span class="jumlah">${ui.cart[p.id]}</span>` : '';
       return `<button class="tile" data-act="tambah-keranjang" data-id="${p.id}" ${habis ? 'disabled' : ''}>
-        <div class="nama">${esc(d.nama)}</div><div>${rp(d.harga)}</div>${stok}</button>`;
+        ${jumlah}<div class="nama">${esc(d.nama)}</div><div class="harga">${rp(d.harga)}</div>${stok}</button>`;
     }).join('');
     const cart = items.length
-      ? `<ul class="list">${items.map((x) => `<li class="row">
-          <div><div>${esc(x.rec.data.nama)}</div><div class="small muted">${rp(x.rec.data.harga)} × ${x.qty} = ${rp(x.rec.data.harga * x.qty)}</div></div>
+      ? `<div class="group-title" id="keranjang">Keranjang</div><div class="card">
+        <ul class="list">${items.map((x) => `<li class="row">
+          <div><div class="nama">${esc(x.rec.data.nama)}</div><div class="small muted">${rp(x.rec.data.harga)} × ${x.qty} = ${rp(x.rec.data.harga * x.qty)}</div></div>
           <div class="qty"><button data-act="kurang" data-id="${x.rec.id}" aria-label="Kurangi">−</button><span>${x.qty}</span>
           <button data-act="tambah-keranjang" data-id="${x.rec.id}" aria-label="Tambah">+</button></div></li>`).join('')}</ul>
-        <div class="row" style="margin-top:10px"><span>Total</span><span class="total">${rp(total)}</span></div>
-        <div class="two" style="margin-top:10px">
+        <div class="row" style="margin-top:8px"><span class="label">Total</span><span class="total">${rp(total)}</span></div>
+        <div class="two" style="margin-top:14px">
           <label class="field"><span>Uang diterima</span><input id="bayar" type="number" inputmode="numeric" min="0" value="${esc(ui.bayar)}" placeholder="${total}"></label>
-          <div class="field"><span class="small muted">Kembalian</span><div class="total" id="kembalian">${bayar >= total ? rp(bayar - total) : '–'}</div></div>
+          <div class="field"><span class="lbl">Kembalian</span><div class="total" id="kembalian" style="padding:6px 4px">${bayar >= total ? rp(bayar - total) : '–'}</div></div>
         </div>
-        <div class="row" style="margin-top:12px">
+        <div class="row" style="margin-top:16px">
           <button class="btn" data-act="kosongkan">Kosongkan</button>
           <button class="btn primary" data-act="simpan-penjualan">Simpan penjualan</button>
-        </div>`
-      : '<div class="muted">Ketuk produk di bawah untuk mulai mencatat penjualan.</div>';
-    return `<h2>Kasir</h2><div class="card">${cart}</div><div class="grid">${tiles}</div>`;
+        </div></div>`
+      : '';
+    const petunjuk = items.length ? '' : '<div class="foot" style="margin:0 8px 14px">Ketuk produk untuk menambahkannya ke keranjang.</div>';
+    return `${cart}<div class="group-title">Produk</div>${petunjuk}<div class="grid">${tiles}</div>`;
   }
 
   function viewProduk() {
@@ -138,13 +166,14 @@
           const d = p.data;
           const m = margin(d.modal, d.harga);
           const stok = d.stok != null ? ` · stok ${angka.format(d.stok)} ${esc(d.satuan || '')}` : '';
-          return `<li class="row"><div><div><strong>${esc(d.nama)}</strong></div>
+          return `<li class="row"><div><div class="nama">${esc(d.nama)}</div>
             <div class="small muted">Modal ${rp(d.modal)} · jual ${rp(d.harga)} · laba ${rp(d.harga - d.modal)} (${angka.format(m)}%)${stok}</div></div>
-            <button class="btn" data-act="produk-ubah" data-id="${p.id}">Ubah</button></li>`;
+            <button class="btn kecil" data-act="produk-ubah" data-id="${p.id}">Ubah</button></li>`;
         }).join('')}</ul>`
       : '<div class="empty">Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.</div>';
-    return `<div class="row"><h2>Produk</h2><button class="btn primary" data-act="produk-baru">+ Produk</button></div>
-      <div class="card">${list}</div>`;
+    return `<div class="group-title"><span>Daftar produk</span><button class="link tambah" data-act="produk-baru">+ Tambah produk</button></div>
+      <div class="card">${list}</div>
+      <div class="foot">Harga jual bisa dihitung otomatis dari modal dan target margin saat menambah atau mengubah produk.</div>`;
   }
 
   function rentang(periode) {
@@ -173,40 +202,42 @@
     const seg = [['hari', 'Hari ini'], ['7hari', '7 hari'], ['bulan', 'Bulan ini'], ['semua', 'Semua']]
       .map(([k, l]) => `<button data-act="periode" data-p="${k}" aria-pressed="${ui.periode === k}">${l}</button>`).join('');
     const fmtWaktu = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    return `<h2>Laporan</h2><div class="seg">${seg}</div>
+    return `<div class="group-title">Periode</div><div class="seg">${seg}</div>
       <div class="stats">
-        <div class="stat"><div class="label">Omzet</div><div class="value">${rp(omzet)}</div></div>
-        <div class="stat"><div class="label">Laba kotor</div><div class="value">${rp(laba)}</div></div>
-        <div class="stat"><div class="label">Transaksi</div><div class="value">${trx.length}</div></div>
-        <div class="stat"><div class="label">Margin rata-rata</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
+        <div class="stat utama"><div class="lbl">Omzet</div><div class="value">${rp(omzet)}</div></div>
+        <div class="stat"><div class="lbl">Laba kotor</div><div class="value">${rp(laba)}</div></div>
+        <div class="stat"><div class="lbl">Transaksi</div><div class="value">${trx.length}</div></div>
+        <div class="stat"><div class="lbl">Margin rata-rata</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
       </div>
-      <div class="card"><strong>Produk terlaris</strong>${top.length
-        ? `<ul class="list">${top.map(([n, v]) => `<li class="row"><span>${esc(n)}</span><span class="small muted">${angka.format(v.qty)} terjual · ${rp(v.omzet)}</span></li>`).join('')}</ul>`
+      <div class="group-title">Produk terlaris</div>
+      <div class="card">${top.length
+        ? `<ul class="list">${top.map(([n, v]) => `<li class="row"><span class="nama">${esc(n)}</span><span class="small muted">${angka.format(v.qty)} terjual · ${rp(v.omzet)}</span></li>`).join('')}</ul>`
         : '<div class="empty">Belum ada penjualan di periode ini.</div>'}</div>
-      <div class="card"><strong>Riwayat penjualan</strong>${trx.length
-        ? `<ul class="list">${trx.map((t) => `<li class="row"><div><div>${rp(t.data.total)} <span class="small muted">· laba ${rp(t.data.laba)}</span></div>
+      <div class="group-title">Riwayat penjualan</div>
+      <div class="card">${trx.length
+        ? `<ul class="list">${trx.map((t) => `<li class="row"><div><div><span class="nama">${rp(t.data.total)}</span> <span class="small muted">· laba ${rp(t.data.laba)}</span></div>
             <div class="small muted">${fmtWaktu(t.data.waktu)} · ${esc(t.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div></div>
-            <button class="btn danger" data-act="batal-trx" data-id="${t.id}">Batalkan</button></li>`).join('')}</ul>`
+            <button class="btn kecil danger" data-act="batal-trx" data-id="${t.id}">Batalkan</button></li>`).join('')}</ul>`
         : '<div class="empty">Belum ada penjualan.</div>'}</div>`;
   }
 
   function viewAkun() {
     const p = profil();
-    const usaha = `<div class="card stack"><strong>Profil usaha</strong>
+    const usaha = `<div class="group-title">Profil usaha</div><div class="card stack">
       <label class="field"><span>Nama usaha</span><input id="namaUsahaInput" value="${esc(p.namaUsaha)}" placeholder="Contoh: Warung Bu Sari"></label>
       <button class="btn" data-act="simpan-profil">Simpan</button></div>`;
-    return `<h2>Akun</h2>${usaha}${viewCloud()}`;
+    return `${usaha}${viewCloud()}`;
   }
 
   function viewCloud() {
     if (!cloudReady) {
-      return `<div class="card stack"><strong>Simpan ke cloud</strong>
+      return `<div class="group-title">Simpan ke cloud</div><div class="card stack">
         <div class="muted">Sinkronisasi cloud belum diaktifkan di aplikasi ini, jadi data hanya tersimpan di perangkat ini.
         Pemilik aplikasi perlu mengisi <code>js/config.js</code> (lihat README).</div></div>`;
     }
     const msg = ui.authMsg ? `<div class="msg ${ui.authMsg.type}">${esc(ui.authMsg.text)}</div>` : '';
     if (cloud.recovering) {
-      return `<div class="card stack"><strong>Buat kata sandi baru</strong>${msg}
+      return `<div class="group-title">Buat kata sandi baru</div><div class="card stack">${msg}
         <form id="formSandiBaru" class="stack">
           <label class="field"><span>Kata sandi baru</span><input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
           <button class="btn primary block">Simpan kata sandi</button></form></div>`;
@@ -216,13 +247,13 @@
       const last = cloud.lastSynced ? cloud.lastSynced.toLocaleString('id-ID') : 'belum';
       const err = cloud.status === 'error' && cloud.lastError
         ? `<div class="msg err">Gagal sinkron: ${esc(cloud.lastError.message || cloud.lastError)}. Data tetap aman di perangkat ini dan akan dikirim ulang.</div>` : '';
-      return `<div class="card stack"><strong>Simpan ke cloud</strong>
+      return `<div class="group-title">Simpan ke cloud</div><div class="card stack">
         <div>Masuk sebagai <strong>${esc(cloud.user.email)}</strong></div>
         <div class="small muted">Sinkron terakhir: ${esc(last)} · ${pending ? pending + ' perubahan belum terkirim' : 'semua data sudah terkirim'}</div>
         ${err}${msg}
         <div class="row"><button class="btn" data-act="sinkron">Sinkronkan sekarang</button>
-        <button class="btn danger" data-act="keluar">Keluar</button></div>
-        <div class="small muted">Masuk dengan akun yang sama di HP, tablet, atau laptop lain untuk melihat data yang sama.</div></div>`;
+        <button class="btn danger" data-act="keluar">Keluar</button></div></div>
+        <div class="foot">Masuk dengan akun yang sama di HP, tablet, atau laptop lain untuk melihat data yang sama.</div>`;
     }
     const daftar = ui.authMode === 'daftar';
     const lupa = ui.authMode === 'lupa';
@@ -231,7 +262,7 @@
     const tombol = daftar ? 'Daftar' : lupa ? 'Kirim tautan reset' : 'Masuk';
     const lokal = store.list('produk').length + store.list('transaksi').length;
     const info = lokal ? `<div class="hint">Data yang sudah ada di perangkat ini akan ikut tersimpan ke akun Anda setelah masuk.</div>` : '';
-    return `<div class="card stack"><strong>${judul}</strong>
+    return `<div class="group-title">${judul}</div><div class="card stack">
       <div class="muted small">Masuk supaya data tidak hilang saat HP rusak atau ganti perangkat, dan bisa dibuka di beberapa perangkat sekaligus.</div>
       ${info}${msg}
       <form id="formAuth" class="stack">
@@ -251,17 +282,17 @@
     const rec = id ? store.get(id) : null;
     const d = rec ? rec.data : { nama: '', satuan: 'pcs', modal: '', harga: '', stok: null };
     dialog.innerHTML = `<form id="formProduk" class="stack" method="dialog">
-      <div class="row"><strong>${rec ? 'Ubah produk' : 'Produk baru'}</strong><button type="button" class="link" data-act="tutup">Tutup</button></div>
+      <div class="row"><h3>${rec ? 'Ubah produk' : 'Produk baru'}</h3><button type="button" class="link" data-act="tutup">Tutup</button></div>
       <label class="field"><span>Nama produk</span><input name="nama" required value="${esc(d.nama)}" placeholder="Contoh: Keripik pedas 100 g"></label>
       <div class="two">
         <label class="field"><span>Modal per satuan (Rp)</span><input name="modal" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.modal)}"></label>
         <label class="field"><span>Satuan</span><input name="satuan" value="${esc(d.satuan || '')}" placeholder="pcs, porsi, kg"></label>
       </div>
       <div class="hint stack">
-        <div><strong>Kalkulator harga jual</strong></div>
+        <div class="label">Kalkulator harga jual</div>
         <div class="two">
           <label class="field"><span>Target margin (%)</span><input name="target" type="number" inputmode="decimal" min="1" max="95" value="30"></label>
-          <div class="field"><span class="small muted">Harga saran</span><div><strong id="saran">–</strong></div>
+          <div class="field"><span class="lbl">Harga saran</span><div class="total" id="saran" style="font-size:22px;padding:4px">–</div>
             <button type="button" class="link small" data-act="pakai-saran">Pakai harga ini</button></div>
         </div>
       </div>
@@ -374,6 +405,11 @@
         if (ui.cart[id] <= 0) delete ui.cart[id];
         render();
         break;
+      case 'ke-keranjang': {
+        const k = $('#keranjang');
+        if (k) k.scrollIntoView({ behavior: 'smooth' });
+        break;
+      }
       case 'kosongkan': ui.cart = {}; ui.bayar = ''; render(); break;
       case 'simpan-penjualan': simpanPenjualan(); break;
       case 'batal-trx': batalTransaksi(id); break;

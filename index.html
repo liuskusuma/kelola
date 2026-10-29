@@ -5,176 +5,283 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Kelola</title>
   <meta name="description" content="Kelola: hitung harga jual, catat penjualan, dan pantau laba usaha Anda.">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#f2f5fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14234f" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Kelola">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
   <style>
+    /* Huruf judul Exo 2 (sama seperti Bagi Rata), disimpan lokal supaya tetap tampil saat offline. */
+    @font-face { font-family: "Exo 2"; font-style: normal; font-weight: 700; font-display: swap; src: url(vendor/fonts/exo-2-latin-700-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Exo 2"; font-style: italic; font-weight: 700; font-display: swap; src: url(vendor/fonts/exo-2-latin-700-italic.woff2) format("woff2"); }
+    @font-face { font-family: "Exo 2"; font-style: normal; font-weight: 800; font-display: swap; src: url(vendor/fonts/exo-2-latin-800-normal.woff2) format("woff2"); }
+    @font-face { font-family: "Exo 2"; font-style: italic; font-weight: 800; font-display: swap; src: url(vendor/fonts/exo-2-latin-800-italic.woff2) format("woff2"); }
+    /* Gaya soft UI dari Bagi Rata: kartu terlihat menonjol, kotak isian tertekan ke dalam.
+       Warna dominan putih dengan navy dan kuning dari logo Kelola. */
     :root {
-      --bg: #f6f7f5;
-      --card: #ffffff;
-      --text: #1c2321;
-      --muted: #5f6b67;
-      --line: #dfe4e1;
-      --brand: #0f766e;
-      --brand-soft: #e3f3f1;
-      --on-brand: #ffffff;
-      --danger: #b42318;
-      --warn: #b54708;
-      --ok: #067647;
-      --radius: 14px;
+      --navy: #0a2a6e;
+      --yellow: #fecb10;
+      --bg: #f2f5fa;
+      --cell: #f2f5fa;
+      --well: #e9eef6;
+      --raise-l: #ffffff;
+      --raise-d: #d2d9e6;
+      --fg: #13203f;
+      --muted: #5d6a88;
+      --faint: #8b96b0;
+      --sep: rgba(10, 42, 110, .08);
+      --primary: var(--navy);
+      --on-primary: #ffffff;
+      --accent-text: var(--navy);
+      --ok: #12805c;
+      --warn: #a65d00;
+      --danger: #c8372d;
+      --f: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+      --f-display: "Exo 2", Bahnschrift, "Segoe UI", system-ui, sans-serif;
+      --raised: 9px 9px 20px var(--raise-d), -9px -9px 20px var(--raise-l);
+      --raised-sm: 3px 3px 7px var(--raise-d), -3px -3px 7px var(--raise-l);
+      --inset: inset 5px 5px 11px var(--raise-d), inset -5px -5px 11px var(--raise-l);
+      --inset-sm: inset 3px 3px 7px var(--raise-d), inset -3px -3px 7px var(--raise-l);
+      color-scheme: light;
     }
+    /* Mode gelap: navy seperti tema Default Bagi Rata. */
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #111615;
-        --card: #1a2120;
-        --text: #e8eeec;
-        --muted: #9aa8a4;
-        --line: #2c3634;
-        --brand: #2dd4bf;
-        --brand-soft: #173431;
-        --on-brand: #06201d;
-        --danger: #f97066;
-        --warn: #fdb022;
-        --ok: #47cd89;
+        --bg: #14234f;
+        --cell: #14234f;
+        --well: #101d44;
+        --raise-l: #1c3066;
+        --raise-d: #0b1534;
+        --fg: #f5f7fc;
+        --muted: #a3b0d6;
+        --faint: #7f8db8;
+        --sep: rgba(255, 255, 255, .08);
+        --primary: var(--yellow);
+        --on-primary: #0a1a45;
+        --accent-text: var(--yellow);
+        --ok: #5fd6a4;
+        --warn: #fbc02d;
+        --danger: #ff8a7a;
+        color-scheme: dark;
       }
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; }
     body {
       background: var(--bg);
-      color: var(--text);
-      font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+      color: var(--fg);
+      font: 16px/1.45 var(--f);
+      padding-bottom: calc(88px + env(safe-area-inset-bottom));
     }
-    header {
+    body.ada-ringkasan { padding-bottom: calc(160px + env(safe-area-inset-bottom)); }
+    button { font: inherit; color: inherit; }
+
+    /* Header */
+    header.nav {
       position: sticky; top: 0; z-index: 5;
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+      display: flex; align-items: center; gap: 14px;
+      padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
       background: var(--bg);
-      border-bottom: 1px solid var(--line);
     }
-    header h1 { font-size: 20px; margin: 0; }
-    header .usaha { font-size: 13px; color: var(--muted); }
-    .badge {
-      font-size: 12px; padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
-      background: var(--card); cursor: pointer;
+    header.nav .logo { width: 48px; height: 48px; border-radius: 12px; box-shadow: var(--raised-sm); flex: 0 0 auto; }
+    header.nav .titles { flex: 1 1 auto; min-width: 0; }
+    header.nav h1 {
+      font-family: var(--f-display); font-style: italic; font-weight: 800;
+      font-size: 30px; line-height: 1; letter-spacing: -.01em; margin: 0; color: var(--accent-text);
     }
-    .badge.ok { color: var(--ok); }
-    .badge.warn { color: var(--warn); }
-    .badge.err { color: var(--danger); }
-    main { max-width: 720px; margin: 0 auto; padding: 16px; }
-    nav {
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
-      display: grid; grid-template-columns: repeat(4, 1fr);
-      background: var(--card); border-top: 1px solid var(--line);
-      padding-bottom: env(safe-area-inset-bottom);
+    header.nav p { margin: 4px 0 0; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sync {
+      display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+      border: 0; border-radius: 999px; padding: 8px 12px; cursor: pointer;
+      background: var(--cell); box-shadow: var(--raised-sm);
+      font-size: 13px; font-weight: 600; color: var(--muted);
     }
-    nav button {
-      border: 0; background: none; color: var(--muted);
-      padding: 10px 4px 12px; font: inherit; font-size: 13px; cursor: pointer;
-      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    .sync .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+    .sync.ok .dot { background: var(--ok); }
+    .sync.warn .dot { background: var(--warn); }
+    .sync.err .dot { background: var(--danger); }
+    .sync.err { color: var(--danger); }
+    .sync.busy .dot { background: var(--yellow); animation: denyut 1s ease-in-out infinite; }
+    @keyframes denyut { 50% { opacity: .3; } }
+
+    main { max-width: 720px; margin: 0 auto; padding: 0 20px 24px; }
+
+    /* Judul bagian dan kartu */
+    .group-title {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      font-family: var(--f-display); font-weight: 700; font-size: 13px;
+      text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+      margin: 26px 8px 10px;
     }
-    nav button svg { width: 22px; height: 22px; }
-    nav button[aria-current="page"] { color: var(--brand); font-weight: 600; }
-    h2 { font-size: 18px; margin: 4px 0 12px; }
+    .group-title:first-child { margin-top: 10px; }
     .card {
-      background: var(--card); border: 1px solid var(--line);
-      border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+      background: var(--cell); border-radius: 28px; box-shadow: var(--raised);
+      padding: 16px 18px; margin-bottom: 8px;
     }
+    .foot { font-size: 13px; color: var(--muted); margin: 10px 8px 0; line-height: 1.4; }
     .muted { color: var(--muted); }
     .small { font-size: 13px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .stack > * + * { margin-top: 10px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .stack > * + * { margin-top: 12px; }
+    .label { font-family: var(--f-display); font-weight: 700; font-size: 15px; letter-spacing: .3px; }
+    .angka { font-family: var(--f-display); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+    /* Ubin produk di kasir */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
     .tile {
-      text-align: left; border: 1px solid var(--line); background: var(--card); color: var(--text);
-      border-radius: var(--radius); padding: 12px; font: inherit; cursor: pointer; min-height: 84px;
+      text-align: left; border: 0; background: var(--cell); color: var(--fg);
+      border-radius: 22px; padding: 14px 16px; cursor: pointer; min-height: 92px;
+      box-shadow: var(--raised); transition: box-shadow .12s;
     }
-    .tile:active { background: var(--brand-soft); }
-    .tile .nama { font-weight: 600; overflow-wrap: anywhere; }
-    .tile[disabled] { opacity: .5; cursor: not-allowed; }
-    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
-    .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
-    .stat .label { font-size: 13px; color: var(--muted); }
-    .stat .value { font-size: 20px; font-weight: 700; margin-top: 2px; overflow-wrap: anywhere; }
+    .tile:active { box-shadow: var(--inset-sm); }
+    .tile .nama { font-family: var(--f-display); font-weight: 700; font-size: 16px; overflow-wrap: anywhere; padding-right: 22px; }
+    .tile .harga { font-family: var(--f-display); font-weight: 800; color: var(--accent-text); margin-top: 4px; }
+    .tile { position: relative; display: flex; flex-direction: column; justify-content: flex-start; }
+    .tile .jumlah {
+      position: absolute; top: 10px; right: 10px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px;
+      background: var(--yellow); color: #0a1a45; font-size: 13px; font-weight: 800;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .tile[disabled] { opacity: .45; cursor: not-allowed; box-shadow: var(--inset-sm); }
+
+    /* Statistik */
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .stat { background: var(--cell); border-radius: 22px; padding: 14px 16px; box-shadow: var(--raised); min-width: 0; }
+    .stat .lbl { font-size: 13px; color: var(--muted); }
+    .stat .value { font-family: var(--f-display); font-weight: 800; font-size: 21px; margin-top: 2px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .stat.utama { background: var(--navy); box-shadow: var(--raised); }
+    .stat.utama .lbl { color: #c6d1ee; }
+    .stat.utama .value { color: var(--yellow); }
+
+    /* Daftar */
     .list { list-style: none; margin: 0; padding: 0; }
-    .list li { padding: 10px 0; border-top: 1px solid var(--line); }
-    .list li:first-child { border-top: 0; }
-    button.btn, a.btn {
+    .list li { padding: 12px 0; position: relative; }
+    .list li + li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; border-top: 1px solid var(--sep); }
+    .list .nama { font-family: var(--f-display); font-weight: 700; }
+
+    /* Tombol */
+    .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      border: 1px solid var(--line); background: var(--card); color: var(--text);
-      border-radius: 10px; padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer;
+      border: 0; border-radius: 30px; padding: 11px 18px; cursor: pointer;
+      background: var(--cell); color: var(--fg); box-shadow: var(--raised-sm);
+      font-family: var(--f-display); font-weight: 700; font-size: 15px; letter-spacing: .2px;
       text-decoration: none;
     }
-    button.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
-    button.btn.danger { color: var(--danger); }
-    button.btn.block { width: 100%; }
-    button.btn:disabled { opacity: .5; cursor: not-allowed; }
-    button.link { border: 0; background: none; color: var(--brand); font: inherit; padding: 0; cursor: pointer; }
-    .qty { display: inline-flex; align-items: center; gap: 8px; }
-    .qty button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 18px; cursor: pointer; }
+    .btn:active { box-shadow: var(--inset-sm); }
+    .btn.primary { background: var(--primary); color: var(--on-primary); }
+    .btn.danger { color: var(--danger); }
+    .btn.block { width: 100%; }
+    .btn.kecil { padding: 7px 14px; font-size: 14px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .link { border: 0; background: none; color: var(--accent-text); padding: 0; cursor: pointer; font-weight: 600; }
+    .tambah { font-family: var(--f-display); font-weight: 700; font-size: 15px; text-transform: none; letter-spacing: 0; }
+
+    /* Stepper jumlah */
+    .qty { display: inline-flex; align-items: center; gap: 4px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 999px; padding: 4px; }
+    .qty button { width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--accent-text); font-size: 20px; font-weight: 700; cursor: pointer; }
+    .qty span { min-width: 22px; text-align: center; font-weight: 700; }
+
+    /* Isian */
     label.field { display: block; }
-    label.field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    label.field > span, .field > .lbl { display: block; font-family: var(--f-display); font-weight: 700; font-size: 14px; letter-spacing: .3px; margin: 0 4px 6px; }
     input, select {
-      width: 100%; font: inherit; color: var(--text); background: var(--bg);
-      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+      width: 100%; font: inherit; font-size: 16px; color: var(--fg);
+      background: var(--well); border: 0; border-radius: 16px; padding: 11px 14px;
+      box-shadow: var(--inset-sm); outline: none;
     }
-    input:focus, select:focus { outline: 2px solid var(--brand); outline-offset: 0; }
-    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .hint { background: var(--brand-soft); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
-    .total { font-size: 24px; font-weight: 700; }
-    .seg { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-    .seg button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
-    .seg button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
-    .empty { text-align: center; color: var(--muted); padding: 24px 8px; }
-    .msg { font-size: 14px; padding: 8px 10px; border-radius: 8px; }
+    input::placeholder { color: var(--faint); }
+    input:focus-visible, select:focus-visible { box-shadow: var(--inset-sm), 0 0 0 2px var(--primary); }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .hint { background: var(--well); box-shadow: var(--inset-sm); border-radius: 20px; padding: 14px 16px; font-size: 14px; }
+    .total { font-family: var(--f-display); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+    /* Pilihan periode */
+    .seg { display: flex; gap: 4px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 999px; padding: 4px; margin-bottom: 18px; }
+    .seg button { flex: 1; border: 0; background: none; color: var(--muted); border-radius: 999px; padding: 8px 6px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .seg button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: var(--raised-sm); font-weight: 700; }
+
+    .empty { text-align: center; color: var(--muted); padding: 20px 8px; }
+    .msg { font-size: 14px; padding: 10px 14px; border-radius: 16px; }
     .msg.err { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-    .msg.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+    .msg.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+
+    /* Ringkasan keranjang di atas tab bar */
+    #summary {
+      position: fixed; z-index: 5; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom));
+      max-width: 688px; margin: 0 auto;
+      display: none; align-items: center; justify-content: space-between; gap: 8px;
+      background: var(--navy); color: #fff; border-radius: 28px; padding: 14px 20px;
+      box-shadow: 0 10px 24px rgba(10, 30, 80, .28); border: 0; cursor: pointer; text-align: left;
+    }
+    body.ada-ringkasan #summary { display: flex; }
+    #summary b { font-family: var(--f-display); font-size: 20px; font-weight: 800; color: var(--yellow); font-variant-numeric: tabular-nums; }
+
+    /* Tab bar */
+    nav.tabs {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      background: var(--cell); box-shadow: 0 -6px 16px rgba(20, 40, 90, .08);
+      padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+    }
+    nav.tabs button {
+      border: 0; background: none; color: var(--muted); cursor: pointer;
+      display: grid; justify-items: center; gap: 2px; padding: 4px 0;
+      font-size: 11px; font-weight: 600;
+    }
+    nav.tabs .ikon { display: grid; place-items: center; width: 52px; height: 32px; border-radius: 999px; }
+    nav.tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    nav.tabs button[aria-current="page"] { color: var(--accent-text); font-weight: 800; }
+    nav.tabs button[aria-current="page"] .ikon { background: var(--navy); color: var(--yellow); box-shadow: var(--raised-sm); }
+
     dialog {
       width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 48px);
-      border: 1px solid var(--line); border-radius: var(--radius);
-      background: var(--card); color: var(--text); padding: 16px;
+      border: 0; border-radius: 28px; background: var(--cell); color: var(--fg); padding: 20px;
+      box-shadow: 0 20px 50px rgba(10, 30, 80, .3);
     }
-    dialog::backdrop { background: rgb(0 0 0 / .4); }
+    dialog::backdrop { background: rgb(10 20 50 / .35); }
+    dialog h3 { font-family: var(--f-display); font-style: italic; font-weight: 800; font-size: 22px; margin: 0; color: var(--accent-text); }
     #toast {
-      position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-      background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
-      opacity: 0; pointer-events: none; transition: opacity .2s; max-width: calc(100vw - 32px);
+      position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+      background: var(--navy); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: opacity .2s; max-width: calc(100vw - 32px); z-index: 10;
+      box-shadow: 0 8px 20px rgba(10, 30, 80, .3);
     }
     #toast.show { opacity: 1; }
+    code { font-size: 13px; }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>Kelola</h1>
-      <div class="usaha" id="namaUsaha"></div>
+  <header class="nav">
+    <img class="logo" src="icons/logo.svg" alt="">
+    <div class="titles">
+      <h1 id="judul">Kasir</h1>
+      <p id="subjudul"></p>
     </div>
-    <button class="badge" id="syncBadge" type="button" data-go="akun">Hanya di perangkat ini</button>
+    <button class="sync" id="syncBadge" type="button" data-go="akun"></button>
   </header>
 
   <main id="view"></main>
 
-  <nav aria-label="Menu utama">
+  <button id="summary" type="button" data-act="ke-keranjang"></button>
+
+  <nav class="tabs" aria-label="Menu utama">
     <button type="button" data-go="kasir">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h4M7 17h2"/></svg>
+      <span class="ikon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h4M7 17h2M14 15h3"/></svg></span>
       Kasir
     </button>
     <button type="button" data-go="produk">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>
+      <span class="ikon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></span>
       Produk
     </button>
     <button type="button" data-go="laporan">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      <span class="ikon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M11 20V5M17 20v-6M3 20h18"/></svg></span>
       Laporan
     </button>
     <button type="button" data-go="akun">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+      <span class="ikon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span>
       Akun
     </button>
   </nav>
