@@ -1,14 +1,19 @@
 // Supaya Kelola tetap terbuka tanpa internet.
 // Naikkan VERSION setiap kali ada file yang berubah.
-const VERSION = 'kelola-v2';
+const VERSION = 'kelola-v3';
 const FILES = [
   './',
   'index.html',
   'manifest.webmanifest',
-  'icons/icon.svg',
+  'icons/logo.svg',
+  'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'vendor/supabase-2.45.4.js',
+  'vendor/fonts/exo-2-latin-700-normal.woff2',
+  'vendor/fonts/exo-2-latin-700-italic.woff2',
+  'vendor/fonts/exo-2-latin-800-normal.woff2',
+  'vendor/fonts/exo-2-latin-800-italic.woff2',
   'js/config.js',
   'js/store.js',
   'js/sync.js',
