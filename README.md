@@ -17,6 +17,8 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Foto produk.** Ambil langsung dari kamera atau pilih dari galeri. Foto diperkecil otomatis supaya ringan, lalu tampil di kasir dan daftar produk.
 - **Bahasa dan tampilan.** Di tab Akun bisa memilih Bahasa Indonesia atau English, dan tampilan Terang (bawaan), Gelap, atau Ikuti HP. Pilihan ini disimpan per perangkat.
 - **Login + simpan ke cloud.** Masuk dengan email dan kata sandi supaya data tidak hilang dan bisa dibuka di beberapa perangkat.
+- **Akun staff.** Owner membuat kode undangan di tab Akun. Staff daftar dengan email sendiri di HP-nya, lalu memasukkan kode itu. Akun staff hanya bisa membuka Kasir: modal, laba, bahan baku, dan laporan tidak pernah dikirim ke HP staff. Penjualan staff masuk ke laporan owner (dengan tanda "oleh Budi", misalnya) dan memotong stok saat Kelola di HP owner terbuka dan tersambung internet.
+- **Mode kasir dengan PIN.** Untuk HP atau tablet kasir yang dipakai bersama: owner mengunci perangkat itu ke kasir dengan PIN. Produk dan Laporan disembunyikan sampai PIN dimasukkan. Ini hanya menyembunyikan tampilan di perangkat itu; untuk staff yang tidak boleh tahu modal sama sekali, pakai akun staff.
 
 ## Cara kerja penyimpanan
 
@@ -37,6 +39,10 @@ Tanpa langkah ini aplikasi tetap jalan, tapi data hanya tersimpan di perangkat.
 4. Buka **Project Settings → API**. Salin **Project URL** dan kunci **anon public** ke [`js/config.js`](js/config.js).
 5. Commit dan push. Kunci anon memang aman berada di kode publik karena setiap pengguna hanya bisa membaca dan mengubah datanya sendiri (Row Level Security).
 
+### Menyiapkan fitur staff (sekali saja)
+
+Buka **SQL Editor → New query**, tempel isi [`supabase/staff.sql`](supabase/staff.sql), lalu klik **Run**. Skrip ini aman dijalankan ulang. Sebelum dijalankan, bagian Staff di tab Akun menampilkan pesan "Fitur staff belum disiapkan".
+
 Opsional: kalau ingin pengguna langsung bisa masuk tanpa konfirmasi email, matikan **Authentication → Providers → Email → Confirm email**.
 
 ## Hosting
@@ -52,11 +58,14 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `index.html` | Tampilan dan gaya |
 | `js/app.js` | Layar Kasir, Produk, Laporan, Akun, serta login |
 | `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
+| `js/penjualan.js` | Mencatat dan membatalkan penjualan, serta mengolah penjualan dari akun staff |
+| `js/staff.js` | Undangan staff, data kasir di HP staff, dan PIN mode kasir |
 | `js/bahasa.js` | Terjemahan Inggris dan pengaturan bahasa/tampilan per perangkat |
 | `js/store.js` | Penyimpanan lokal (localStorage) |
 | `js/sync.js` | Sinkronisasi dengan cloud |
 | `js/config.js` | Alamat dan kunci Supabase |
 | `supabase/schema.sql` | Tabel, trigger, dan aturan keamanan di Supabase |
+| `supabase/staff.sql` | Tabel dan fungsi untuk akun staff |
 | `vendor/` | Pustaka supabase-js 2.45.4 dan huruf Exo 2 (disimpan lokal supaya jalan offline) |
 | `icons/logo.svg` | Logo Kelola (K putih dan kuning di atas navy); `logo-asli.jpg` adalah file aslinya |
 | `sw.js`, `manifest.webmanifest`, `icons/icon-*.png` | Supaya bisa dipasang di layar utama dan jalan offline |
@@ -66,5 +75,5 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 ```sh
 node --test                       # logika sinkronisasi, rumus HPP, dan terjemahan
 python3 -m http.server 8765 &     # lalu, dengan Playwright terpasang:
-node tests/e2e.js                 # dua perangkat + Supabase tiruan di browser
+node tests/e2e.js                 # dua perangkat owner, satu HP staff, Supabase tiruan di browser
 ```

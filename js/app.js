@@ -3,6 +3,8 @@
 
   const store = KelolaStore.createStore(window.localStorage);
   const H = KelolaHitung;
+  const P = KelolaPenjualan;
+  const S = KelolaStaff;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
 
@@ -37,6 +39,9 @@
     authEmail: '',
     struk: null, // { blob, url, teks }
     foto: null, // foto produk di form yang sedang dibuka (data URL)
+    kunciMsg: null,
+    gabungMsg: null,
+    staff: { list: null, kode: null, msg: null, belumSiap: false, memuat: false }, // daftar staff untuk owner
   };
 
   const cloud = {
@@ -47,7 +52,17 @@
     lastSynced: null,
     lastError: null,
     recovering: false,
+    peran: null, // 'owner' | 'staff' setelah masuk
+    staffApi: null,
   };
+
+  // Data kasir untuk akun staff (lihat js/staff.js). Kosong untuk owner.
+  let kasirStaff = null;
+
+  const modeStaff = () => cloud.peran === 'staff' && !!kasirStaff;
+  // Mode kasir dengan PIN di HP bersama.
+  const modeKunci = () => !!setel.kunci;
+  const hanyaKasir = () => modeStaff() || modeKunci();
 
   // ---------- Data ----------
 
@@ -80,6 +95,33 @@
   function profil() {
     const rec = store.get('profil');
     return rec ? rec.data : { namaUsaha: '' };
+  }
+
+  // Profil usaha: milik sendiri, atau milik owner kalau masuk sebagai staff.
+  const usaha = () => (modeStaff() ? kasirStaff.usaha || {} : profil());
+
+  // Produk dan penjualan yang dipakai layar kasir. Staff memakai salinan dari owner tanpa modal.
+  function produkKasir() {
+    if (!modeStaff()) return produkList();
+    return kasirStaff.produk.map((d) => ({ id: d.id, data: d })).sort(urutNama);
+  }
+
+  function ambilKasir(id) {
+    if (!modeStaff()) return store.get(id);
+    const d = kasirStaff.produk.find((x) => x.id === id);
+    return d ? { id, data: d } : null;
+  }
+
+  const cariKasir = (id) => { const r = ambilKasir(id); return r ? r.data : null; };
+
+  function ambilTransaksi(id) {
+    if (!modeStaff()) return store.get(id);
+    const d = kasirStaff.jualan.find((x) => x.id === id);
+    return d ? { id, data: d } : null;
+  }
+
+  function simpanKasirStaff() {
+    S.simpanKasir(window.localStorage, kasirStaff);
   }
 
   function change(fn) {
@@ -116,7 +158,9 @@
   };
 
   function render() {
+    if (hanyaKasir() && (ui.view === 'produk' || ui.view === 'laporan')) ui.view = 'kasir';
     document.querySelectorAll('nav.tabs button').forEach((b) => {
+      b.hidden = hanyaKasir() && (b.dataset.go === 'produk' || b.dataset.go === 'laporan');
       if (b.dataset.go === ui.view) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
       $('.teks', b).textContent = t(JUDUL[b.dataset.go][0]);
@@ -124,7 +168,8 @@
     $('nav.tabs').setAttribute('aria-label', t('Menu utama'));
     const [judul, sub] = JUDUL[ui.view];
     $('#judul').textContent = t(judul);
-    $('#subjudul').textContent = profil().namaUsaha || t(sub);
+    $('#subjudul').textContent = usaha().namaUsaha || t(sub);
+    document.body.classList.toggle('hanya-kasir', hanyaKasir());
     renderBadge();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
@@ -137,7 +182,7 @@
     let title = t('Data hanya tersimpan di perangkat ini. Masuk untuk menyimpan ke cloud.');
     let cls = '';
     if (cloud.user) {
-      const pending = store.dirtyRecords().length;
+      const pending = modeStaff() ? kasirStaff.antrian.length : store.dirtyRecords().length;
       const belum = t('{n} perubahan belum terkirim', { n: pending });
       if (!navigator.onLine) { text = t('Offline'); title = pending ? belum : t('Tidak ada koneksi'); cls = 'warn'; }
       else if (cloud.status === 'syncing') { text = t('Sinkron…'); title = t('Menyinkronkan'); cls = 'busy'; }
@@ -153,7 +198,7 @@
 
   function isiKeranjang() {
     return Object.entries(ui.cart)
-      .map(([id, qty]) => ({ rec: store.get(id), qty }))
+      .map(([id, qty]) => ({ rec: ambilKasir(id), qty }))
       .filter((x) => x.rec);
   }
 
@@ -170,14 +215,17 @@
   function bisaTambah(id) {
     const cart = Object.assign({}, ui.cart);
     cart[id] = (cart[id] || 0) + 1;
-    return H.stokCukup(cart, cari);
+    return H.stokCukup(cart, cariKasir);
   }
 
   const fotoKecil = (d) => (d.foto ? `<img class="thumb" src="${esc(d.foto)}" alt="">` : '');
 
   function viewKasir() {
-    const produk = produkList();
+    const produk = produkKasir();
     if (!produk.length) {
+      if (hanyaKasir()) {
+        return `<div class="group-title">${t('Mulai berjualan')}</div><div class="card empty">${t('Belum ada produk. Minta owner menambahkan produk dulu.')}</div>`;
+      }
       return `<div class="group-title">${t('Mulai berjualan')}</div><div class="card empty stack">
         <div>${t('Belum ada produk. Tambahkan produk dulu, lalu ketuk produk di sini setiap kali ada pembeli.')}</div>
         <button class="btn primary" data-act="produk-baru">${t('Tambah produk pertama')}</button></div>`;
@@ -194,7 +242,7 @@
       return `<button class="tile ${d.foto ? 'ada-foto' : ''}" data-act="tambah-keranjang" data-id="${p.id}" ${habis ? 'disabled' : ''}>
         ${jumlah}${foto}<div class="isi"><div class="nama">${esc(d.nama)}</div><div class="harga">${rp(d.harga)}</div>${stok}</div></button>`;
     }).join('');
-    const terakhir = !items.length && ui.trxTerakhir && store.get(ui.trxTerakhir);
+    const terakhir = !items.length && ui.trxTerakhir && ambilTransaksi(ui.trxTerakhir);
     const info = terakhir
       ? `<div class="card row" id="trxTerakhir"><div><div class="nama label">${t('Penjualan {total} tersimpan', { total: rp(terakhir.data.total) })}</div>
           <div class="small muted">${t('Kirim struk ke pembeli lewat WhatsApp.')}</div></div>
@@ -329,25 +377,114 @@
       <div class="group-title">${t('Riwayat penjualan')}</div>
       <div class="card">${trx.length
         ? `<ul class="list">${trx.map((r) => `<li class="row"><div><div><span class="nama">${rp(r.data.total)}</span> <span class="small muted">· ${t('laba')} ${rp(r.data.laba)}</span></div>
-            <div class="small muted">${fmtWaktu(r.data.waktu)} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div></div>
+            <div class="small muted">${fmtWaktu(r.data.waktu)}${r.data.staff ? ' · ' + t('oleh {nama}', { nama: esc(r.data.staff) }) : ''} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div></div>
             <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${r.id}">${t('Struk')}</button>
             <button class="btn kecil danger" data-act="batal-trx" data-id="${r.id}">${t('Batalkan')}</button></div></li>`).join('')}</ul>`
         : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
   }
 
+  const pilihSetel = (nama, nilai, opsi) => `<div class="seg kecil" role="group">${opsi.map(([k, l]) =>
+    `<button data-act="setel" data-nama="${nama}" data-nilai="${k}" aria-pressed="${nilai === k}">${l}</button>`).join('')}</div>`;
+
+  function viewPengaturan() {
+    return `<div class="group-title">${t('Pengaturan')}</div><div class="card stack" id="pengaturan">
+      <div class="field"><span class="lbl">${t('Bahasa')}</span>${pilihSetel('bahasa', setel.bahasa, [['id', 'Bahasa Indonesia'], ['en', 'English']])}</div>
+      <div class="field"><span class="lbl">${t('Tampilan')}</span>${pilihSetel('tema', setel.tema, [['terang', t('Terang')], ['gelap', t('Gelap')], ['otomatis', t('Ikuti HP')]])}</div>
+      </div>`;
+  }
+
+  const pesan = (m) => (m ? `<div class="msg ${m.type}">${esc(m.text)}</div>` : '');
+
+  // HP bersama yang dikunci ke kasir: hanya pengaturan bahasa dan buka kunci.
+  function viewKunci() {
+    return `<div class="group-title">${t('Mode kasir')}</div><div class="card stack">
+      <div>${t('HP ini sedang dikunci ke kasir. Modal, laba, produk, dan laporan disembunyikan.')}</div>
+      ${pesan(ui.kunciMsg)}
+      <form id="formBukaKunci" class="stack">
+        <label class="field"><span>${t('PIN owner')}</span><input name="pin" type="password" inputmode="numeric" autocomplete="off" required></label>
+        <button class="btn primary block">${t('Buka kunci')}</button>
+      </form></div>${viewPengaturan()}`;
+  }
+
+  // Akun staff: info, penjualan hari ini, sinkron, keluar.
+  function viewAkunStaff() {
+    const awal = rentang('hari');
+    const hariIni = kasirStaff.jualan.filter((j) => Date.parse(j.waktu) >= awal);
+    const total = hariIni.reduce((s, j) => s + j.total, 0);
+    const pending = kasirStaff.antrian.length;
+    const err = cloud.status === 'error' && cloud.lastError
+      ? `<div class="msg err">${esc(pesanStaff(cloud.lastError))}</div>` : '';
+    return `<div class="group-title">${t('Akun staff')}</div><div class="card stack">
+        <div>${t('Masuk sebagai')} <strong>${esc(cloud.user.email)}</strong></div>
+        <div class="small muted">${t('Staff di {usaha}. Akun ini hanya bisa memakai kasir.', { usaha: esc(usaha().namaUsaha || 'Kelola') })}</div>
+        <div class="row"><span>${t('Penjualan Anda hari ini')}</span><b>${hariIni.length} · ${rp(total)}</b></div>
+        <div class="small muted">${pending ? t('{n} penjualan belum terkirim', { n: pending }) : t('semua data sudah terkirim')}</div>
+        ${err}
+        <div class="row"><button class="btn" data-act="sinkron">${t('Sinkronkan sekarang')}</button>
+        <button class="btn danger" data-act="keluar">${t('Keluar')}</button></div></div>${viewPengaturan()}`;
+  }
+
+  // Owner: kunci HP ke kasir dengan PIN.
+  function viewModeKasir() {
+    return `<div class="group-title">${t('Mode kasir untuk HP bersama')}</div><div class="card stack">
+      <div class="small muted">${t('Kunci HP atau tablet ini supaya hanya kasir yang bisa dibuka. Modal, laba, produk, dan laporan disembunyikan sampai PIN owner dimasukkan.')}</div>
+      ${pesan(ui.kunciMsg)}
+      <form id="formKunci" class="stack">
+        <label class="field"><span>${t('Buat PIN (4–8 angka)')}</span><input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" autocomplete="new-password" required></label>
+        <button class="btn block">${t('Kunci ke kasir')}</button>
+      </form></div>`;
+  }
+
+  // Owner yang sudah masuk: undang dan atur staff.
+  function viewStaff() {
+    if (!cloud.user || cloud.peran !== 'owner') return '';
+    const st = ui.staff;
+    let isi;
+    if (st.belumSiap) {
+      isi = `<div class="small muted">${t('Fitur staff belum disiapkan di Supabase. Jalankan supabase/staff.sql sekali (lihat README).')}</div>`;
+    } else {
+      const daftar = st.list && st.list.length
+        ? `<ul class="list">${st.list.map((x) => `<li class="row"><div><div class="nama">${esc(x.nama)}</div>
+            <div class="small muted">${t('Bergabung {tanggal}', { tanggal: new Date(x.created_at).toLocaleDateString(lokal(), { day: 'numeric', month: 'short', year: 'numeric' }) })}</div></div>
+            <button class="btn kecil danger" data-act="hapus-staff" data-id="${esc(x.staff_id)}">${t('Hapus')}</button></li>`).join('')}</ul>`
+        : `<div class="small muted">${st.list ? t('Belum ada staff.') : t('Memuat…')}</div>`;
+      const kode = st.kode
+        ? `<div class="hint stack" id="kodeUndangan"><div class="small">${t('Kode undangan (berlaku 7 hari, sekali pakai):')}</div>
+            <div class="kode">${esc(st.kode)}</div>
+            <div class="small muted">${t('Minta staff membuka Kelola, daftar dengan email sendiri, lalu masukkan kode ini di Akun.')}</div></div>`
+        : '';
+      isi = `<div class="small muted">${t('Staff memakai HP sendiri dan hanya bisa membuka kasir. Modal, laba, laporan, dan bahan baku tidak dikirim ke HP staff.')}</div>
+        ${daftar}${kode}${pesan(st.msg)}
+        <button class="btn block" data-act="undang-staff">${t('Buat kode undangan')}</button>`;
+    }
+    return `<div class="group-title">${t('Staff')}</div><div class="card stack" id="staff">${isi}</div>`;
+  }
+
+  // Akun yang baru dibuat staff: masukkan kode dari owner.
+  function viewGabung() {
+    if (!cloud.user || cloud.peran !== 'owner' || ui.staff.belumSiap || (ui.staff.list && ui.staff.list.length)) return '';
+    return `<div class="group-title">${t('Bergabung sebagai staff')}</div><div class="card stack">
+      <div class="small muted">${t('Kalau Anda staff, masukkan kode undangan dari owner. Setelah itu akun ini hanya bisa memakai kasir.')}</div>
+      ${pesan(ui.gabungMsg)}
+      <form id="formGabung" class="stack">
+        <div class="two">
+          <label class="field"><span>${t('Kode undangan')}</span><input name="kode" autocapitalize="characters" autocomplete="off" required></label>
+          <label class="field"><span>${t('Nama Anda')}</span><input name="nama" autocomplete="name" required></label>
+        </div>
+        <button class="btn block">${t('Gabung')}</button>
+      </form></div>`;
+  }
+
   function viewAkun() {
+    if (modeKunci()) return viewKunci();
+    if (modeStaff()) return viewAkunStaff();
     const p = profil();
-    const pilih = (nama, nilai, opsi) => `<div class="seg kecil" role="group">${opsi.map(([k, l]) =>
-      `<button data-act="setel" data-nama="${nama}" data-nilai="${k}" aria-pressed="${nilai === k}">${l}</button>`).join('')}</div>`;
-    const usaha = `<div class="group-title">${t('Profil usaha')}</div><div class="card stack">
+    const profilUsaha = `<div class="group-title">${t('Profil usaha')}</div><div class="card stack">
       <label class="field"><span>${t('Nama usaha')}</span><input id="namaUsahaInput" value="${esc(p.namaUsaha)}" placeholder="${t('Contoh: Warung Bu Sari')}"></label>
       <label class="field"><span>${t('Alamat atau nomor WhatsApp (tampil di struk)')}</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="${t('Contoh: Jl. Melati 5 · 0812 3456 7890')}"></label>
       <button class="btn" data-act="simpan-profil">${t('Simpan')}</button></div>`;
-    const pengaturan = `<div class="group-title">${t('Pengaturan')}</div><div class="card stack" id="pengaturan">
-      <div class="field"><span class="lbl">${t('Bahasa')}</span>${pilih('bahasa', setel.bahasa, [['id', 'Bahasa Indonesia'], ['en', 'English']])}</div>
-      <div class="field"><span class="lbl">${t('Tampilan')}</span>${pilih('tema', setel.tema, [['terang', t('Terang')], ['gelap', t('Gelap')], ['otomatis', t('Ikuti HP')]])}</div>
-      </div>`;
-    return `${usaha}${pengaturan}${viewCloud()}`;
+    if (cloud.user && cloud.peran === 'owner' && !ui.staff.list && !ui.staff.memuat && !ui.staff.belumSiap) muatStaff();
+    return `${profilUsaha}${viewPengaturan()}${viewCloud()}${viewStaff()}${viewModeKasir()}${viewGabung()}`;
   }
 
   function viewCloud() {
@@ -713,7 +850,7 @@
   // ---------- Struk ----------
 
   function strukBaris(trx) {
-    const p = profil();
+    const p = usaha();
     const w = new Date(trx.data.waktu).toLocaleString(lokal(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     const bayar = trx.data.bayar || trx.data.total;
     return {
@@ -807,7 +944,7 @@
   }
 
   async function bukaStruk(id) {
-    const trx = store.get(id);
+    const trx = ambilTransaksi(id);
     if (!trx) return;
     if (document.fonts && document.fonts.load) await document.fonts.load('italic 800 40px "Exo 2"').catch(() => {});
     const s = strukBaris(trx);
@@ -847,59 +984,36 @@
     toast.timer = setTimeout(() => el.classList.remove('show'), 2200);
   }
 
-  // Tambah atau kurangi stok produk dan bahan sesuai `potong` (tanda -1 = kurangi).
-  function ubahStok(potong, tanda) {
-    Object.entries(potong.produk || {}).forEach(([id, n]) => {
-      const p = store.get(id);
-      if (p && p.data.stok != null) store.put('produk', Object.assign({}, p.data, { stok: p.data.stok + tanda * n }), id);
-    });
-    Object.entries(potong.bahan || {}).forEach(([id, n]) => {
-      const b = store.get(id);
-      if (b && b.data.stok != null) store.put('bahan', Object.assign({}, b.data, { stok: b.data.stok + tanda * n }), id);
-    });
-  }
-
   function simpanPenjualan() {
     const items = isiKeranjang().filter((x) => x.qty > 0);
     if (!items.length) return;
-    const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
-    const baris = items.map((x) => ({ produkId: x.rec.id, nama: x.rec.data.nama, qty: x.qty, harga: x.rec.data.harga, modal: modalOf(x.rec) }));
-    const laba = baris.reduce((s, i) => s + (i.harga - i.modal) * i.qty, 0);
-    const potong = H.potonganKeranjang(ui.cart, cari);
-    let rec;
-    change(() => {
-      rec = store.put('transaksi', {
-        waktu: new Date().toISOString(),
-        items: baris,
-        total,
-        laba,
-        bayar: num(ui.bayar) || total,
-        potong,
-      });
-      ubahStok(potong, -1);
-    });
+    const jual = {
+      waktu: new Date().toISOString(),
+      items: items.map((x) => ({ produkId: x.rec.id, nama: x.rec.data.nama, qty: x.qty, harga: x.rec.data.harga })),
+    };
+    const total = jual.items.reduce((s, i) => s + i.harga * i.qty, 0);
+    jual.bayar = num(ui.bayar) || total;
+    if (modeStaff()) {
+      // Staff tidak tahu modal; laba dihitung di HP owner saat penjualan ini diambil.
+      Object.assign(jual, { id: KelolaStore.uuid(), total });
+      S.catatJualanStaff(kasirStaff, H, jual);
+      simpanKasirStaff();
+      ui.trxTerakhir = jual.id;
+      scheduleSync();
+    } else {
+      let rec;
+      change(() => { rec = P.catatPenjualan(store, H, jual); });
+      ui.trxTerakhir = rec.id;
+    }
     ui.cart = {};
     ui.bayar = '';
-    ui.trxTerakhir = rec.id;
     render();
     toast(t('Penjualan {total} tersimpan', { total: rp(total) }));
   }
 
   function batalTransaksi(id) {
-    const trx = store.get(id);
-    if (!trx || !confirm(t('Batalkan penjualan ini? Stok produk dan bahan akan dikembalikan.'))) return;
-    change(() => {
-      if (trx.data.potong) {
-        ubahStok(trx.data.potong, 1);
-      } else {
-        // Penjualan dari versi lama: hanya stok produk yang dipotong.
-        trx.data.items.forEach((i) => {
-          const p = store.get(i.produkId);
-          if (p && p.data.stok != null) store.put('produk', Object.assign({}, p.data, { stok: p.data.stok + i.qty }), p.id);
-        });
-      }
-      store.remove(id);
-    });
+    if (!store.get(id) || !confirm(t('Batalkan penjualan ini? Stok produk dan bahan akan dikembalikan.'))) return;
+    change(() => P.batalPenjualan(store, id));
     if (ui.trxTerakhir === id) ui.trxTerakhir = null;
     render();
   }
@@ -996,6 +1110,8 @@
         toast(t('Profil tersimpan'));
         break;
       case 'setel': ubahPengaturan({ [el.dataset.nama]: el.dataset.nilai }); break;
+      case 'undang-staff': undangStaff(); break;
+      case 'hapus-staff': hapusStaff(id); break;
       case 'mode': ui.authMode = el.dataset.m; ui.authMsg = null; render(); break;
       case 'sinkron': syncNow(true); break;
       case 'keluar': keluar(); break;
@@ -1005,7 +1121,7 @@
   document.addEventListener('input', (e) => {
     if (e.target.id === 'bayar') {
       ui.bayar = e.target.value;
-      const total = Object.entries(ui.cart).reduce((s, [id, q]) => { const r = store.get(id); return s + (r ? r.data.harga * q : 0); }, 0);
+      const total = isiKeranjang().reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
       const b = num(ui.bayar);
       $('#kembalian').textContent = b >= total ? rp(b - total) : '–';
     }
@@ -1062,7 +1178,7 @@
       if (p && batch > 0) {
         change(() => {
           store.put('produk', Object.assign({}, p.data, { stok: p.data.stok + (p.data.resep.hasil || 1) * batch }), id);
-          ubahStok({ bahan: H.bahanProduksi(p.data, batch) }, -1);
+          P.ubahStok(store, { bahan: H.bahanProduksi(p.data, batch) }, -1);
         });
         toast(t('Stok bertambah'));
       }
@@ -1087,6 +1203,34 @@
     if (f.id === 'formAuth') {
       e.preventDefault();
       await kirimAuth(f);
+    }
+    if (f.id === 'formKunci') {
+      e.preventDefault();
+      const pin = f.pin.value.trim();
+      if (!/^[0-9]{4,8}$/.test(pin)) { ui.kunciMsg = { type: 'err', text: t('PIN harus 4–8 angka.') }; render(); return; }
+      const garam = S.kodeAcak(12);
+      ubahPengaturan({ kunci: { garam, hash: await S.hashPin(pin, garam) } });
+      ui.kunciMsg = null;
+      ui.cart = {};
+      ui.view = 'kasir';
+      render();
+      toast(t('HP ini dikunci ke kasir'));
+    }
+    if (f.id === 'formBukaKunci') {
+      e.preventDefault();
+      const k = setel.kunci;
+      if (k && (await S.hashPin(f.pin.value.trim(), k.garam)) === k.hash) {
+        ui.kunciMsg = null;
+        ubahPengaturan({ kunci: null });
+        toast(t('Kunci kasir dibuka'));
+      } else {
+        ui.kunciMsg = { type: 'err', text: t('PIN salah.') };
+        render();
+      }
+    }
+    if (f.id === 'formGabung') {
+      e.preventDefault();
+      await gabungStaff(f);
     }
     if (f.id === 'formSandiBaru') {
       e.preventDefault();
@@ -1140,59 +1284,245 @@
 
   async function keluar() {
     if (navigator.onLine) await syncNow(false).catch(() => {});
-    const pending = store.dirtyRecords().length;
+    const pending = modeStaff() ? kasirStaff.antrian.length : store.dirtyRecords().length;
     const tanya = pending
       ? t('Masih ada {n} perubahan yang belum terkirim ke cloud dan akan hilang jika Anda keluar sekarang. Tetap keluar?', { n: pending })
       : t('Keluar dari akun? Data di perangkat ini akan dihapus, tapi tetap aman di cloud.');
     if (!confirm(tanya)) return;
     await cloud.client.auth.signOut().catch(() => {});
+    const wasStaff = modeStaff();
     setUser(null);
-    store.clear();
+    if (wasStaff) S.hapusKasir(window.localStorage);
+    else store.clear();
     ui.cart = {};
+    ui.trxTerakhir = null;
     ui.authMode = 'masuk';
     ui.authMsg = { type: 'ok', text: t('Anda sudah keluar.') };
     render();
   }
 
-  function setUser(user) {
-    const prev = cloud.user && cloud.user.id;
-    cloud.user = user;
-    if (!user) {
-      cloud.sync = null;
-      cloud.status = 'idle';
-      return;
+  // Peran akun: staff (punya baris di tabel staff) atau owner. Disimpan supaya tetap
+  // tahu walau sedang offline.
+  const KEY_PERAN = 'kelola:peran';
+  async function cekPeran(user) {
+    try {
+      const peran = await cloud.staffApi.peran(user.id);
+      localStorage.setItem(KEY_PERAN, JSON.stringify({ userId: user.id, peran }));
+      return peran;
+    } catch (err) {
+      if (S.belumDisiapkan(err)) { ui.staff.belumSiap = true; return null; }
+      try {
+        const c = JSON.parse(localStorage.getItem(KEY_PERAN) || 'null');
+        if (c && c.userId === user.id) return c.peran;
+      } catch (e) { /* abaikan */ }
+      return null;
     }
-    if (prev === user.id && cloud.sync) return;
+  }
+
+  function mulaiOwner(user) {
+    cloud.peran = 'owner';
+    kasirStaff = null;
     store.claim(user.id);
     const remote = KelolaSync.supabaseRemote(cloud.client, user.id);
     cloud.sync = KelolaSync.createSync(store, remote, (status, detail) => {
       cloud.status = status;
       if (status === 'synced') { cloud.lastSynced = detail; cloud.lastError = null; }
       if (status === 'error') cloud.lastError = detail;
-      if (!dialog.open && !document.activeElement.matches('input')) render();
-      else renderBadge();
+      renderAman();
     });
+  }
+
+  function mulaiStaff(user, peran) {
+    cloud.peran = 'staff';
+    cloud.sync = null;
+    kasirStaff = S.bacaKasir(window.localStorage, user.id);
+    kasirStaff.ownerId = peran.owner_id;
+    kasirStaff.nama = peran.nama;
+    simpanKasirStaff();
+    ui.cart = {};
+    ui.trxTerakhir = null;
+    if (ui.view !== 'akun') ui.view = 'kasir';
+  }
+
+  // Render ulang kecuali pengguna sedang mengetik atau membuka dialog.
+  function renderAman() {
+    if (!dialog.open && !document.activeElement.matches('input')) render();
+    else renderBadge();
+  }
+
+  async function setUser(user) {
+    const prev = cloud.user && cloud.user.id;
+    cloud.user = user;
+    if (!user) {
+      cloud.sync = null;
+      cloud.peran = null;
+      cloud.status = 'idle';
+      kasirStaff = null;
+      ui.staff = { list: null, kode: null, msg: null, belumSiap: false, memuat: false };
+      return;
+    }
+    if (prev === user.id && cloud.peran) return;
+    cloud.staffApi = S.supabaseStaff(cloud.client);
+    const peran = await cekPeran(user);
+    if (!cloud.user || cloud.user.id !== user.id) return;
+    if (peran) mulaiStaff(user, peran);
+    else mulaiOwner(user);
+    render();
     syncNow(false);
   }
 
   let syncTimer = null;
   function scheduleSync() {
     renderBadge();
-    if (!cloud.sync) return;
+    if (!cloud.sync && !modeStaff()) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => syncNow(false), 1500);
   }
 
   function syncNow(loud) {
-    if (!cloud.sync || !navigator.onLine) {
+    if ((!cloud.sync && !modeStaff()) || !navigator.onLine) {
       renderBadge();
       if (loud) toast(t('Tidak ada koneksi internet'));
       return Promise.resolve();
     }
-    return cloud.sync.run().then(
+    const jalan = modeStaff() ? syncStaff() : cloud.sync.run().then(prosesPenjualanStaff);
+    return jalan.then(
       () => { if (loud) toast(t('Data sudah sinkron')); },
       (err) => { console.warn('Sinkronisasi gagal', err); },
     );
+  }
+
+  // ---------- Staff ----------
+
+  function pesanStaff(err) {
+    const m = (err && err.message) || String(err);
+    if (/Bukan akun staff/i.test(m)) return t('Akun ini sudah tidak terdaftar sebagai staff. Hubungi owner.');
+    if (/Kode undangan tidak berlaku/i.test(m)) return t('Kode undangan salah, sudah dipakai, atau sudah kedaluwarsa.');
+    if (/milik akun Anda sendiri/i.test(m)) return t('Kode ini dibuat oleh akun Anda sendiri. Masuk dengan akun staff untuk memakainya.');
+    if (/fetch|network/i.test(m)) return t('Tidak ada koneksi internet. Coba lagi nanti.');
+    return m;
+  }
+
+  // HP staff: kirim penjualan yang tertunda, lalu ambil produk terbaru dari owner.
+  let staffJalan = null;
+  function syncStaff() {
+    if (staffJalan) return staffJalan;
+    staffJalan = (async () => {
+      cloud.status = 'syncing';
+      renderBadge();
+      try {
+        const s = kasirStaff;
+        if (s.antrian.length) {
+          const kirim = s.antrian.slice();
+          await cloud.staffApi.kirim(s.ownerId, kirim);
+          const terkirim = new Set(kirim.map((j) => j.id));
+          s.antrian = s.antrian.filter((j) => !terkirim.has(j.id));
+          simpanKasirStaff();
+        }
+        if (!s.antrian.length) {
+          const d = await cloud.staffApi.produkKasir();
+          s.produk = d.produk || [];
+          s.usaha = d.usaha || {};
+          simpanKasirStaff();
+        }
+        cloud.status = 'synced';
+        cloud.lastSynced = new Date();
+        cloud.lastError = null;
+      } catch (err) {
+        cloud.status = 'error';
+        cloud.lastError = err;
+        throw err;
+      } finally {
+        staffJalan = null;
+        renderAman();
+      }
+    })();
+    return staffJalan;
+  }
+
+  // HP owner: ambil penjualan dari akun staff, hitung modal dan laba, potong stok.
+  let ambilJalan = false;
+  async function prosesPenjualanStaff() {
+    if (cloud.peran !== 'owner' || ui.staff.belumSiap || ambilJalan || !cloud.user) return;
+    ambilJalan = true;
+    try {
+      const rows = await cloud.staffApi.ambilPenjualan(cloud.user.id);
+      if (!rows.length) return;
+      // Muat ulang daftar staff kalau ada staff baru yang belum dikenal.
+      const kenal = (id) => (ui.staff.list || []).some((st) => st.staff_id === id);
+      if (rows.some((r) => !kenal(r.staff_id))) {
+        ui.staff.list = await cloud.staffApi.daftarStaff(cloud.user.id).catch(() => ui.staff.list);
+      }
+      const nama = (id) => { const x = (ui.staff.list || []).find((st) => st.staff_id === id); return x && x.nama; };
+      let n = 0;
+      change(() => { n = P.olahPenjualanStaff(store, H, rows, nama); });
+      if (n) renderAman();
+    } catch (err) {
+      if (S.belumDisiapkan(err)) ui.staff.belumSiap = true;
+      else console.warn('Gagal mengambil penjualan staff', err);
+    } finally {
+      ambilJalan = false;
+    }
+  }
+
+  async function muatStaff() {
+    ui.staff.memuat = true;
+    try {
+      ui.staff.list = await cloud.staffApi.daftarStaff(cloud.user.id);
+    } catch (err) {
+      if (S.belumDisiapkan(err)) ui.staff.belumSiap = true;
+      else ui.staff.msg = { type: 'err', text: pesanStaff(err) };
+      // Jangan coba terus-menerus; dimuat lagi saat sinkron berikutnya.
+      ui.staff.list = [];
+    }
+    ui.staff.memuat = false;
+    if (ui.view === 'akun') renderAman();
+  }
+
+  async function undangStaff() {
+    ui.staff.msg = null;
+    try {
+      ui.staff.kode = await cloud.staffApi.buatUndangan();
+    } catch (err) {
+      if (S.belumDisiapkan(err)) ui.staff.belumSiap = true;
+      else ui.staff.msg = { type: 'err', text: pesanStaff(err) };
+    }
+    render();
+  }
+
+  async function hapusStaff(id) {
+    const x = (ui.staff.list || []).find((st) => st.staff_id === id);
+    if (!confirm(t('Hapus {nama} dari staff? Akun itu tidak bisa memakai kasir Anda lagi.', { nama: x ? x.nama : 'staff' }))) return;
+    try {
+      await cloud.staffApi.hapusStaff(id);
+      ui.staff.list = (ui.staff.list || []).filter((st) => st.staff_id !== id);
+    } catch (err) {
+      ui.staff.msg = { type: 'err', text: pesanStaff(err) };
+    }
+    render();
+  }
+
+  async function gabungStaff(f) {
+    const ada = store.list('produk').length + store.list('transaksi').length;
+    if (ada && !confirm(t('Akun ini sudah punya data usaha sendiri. Setelah bergabung sebagai staff, akun ini hanya bisa memakai kasir owner. Lanjutkan?'))) return;
+    const btn = f.querySelector('button');
+    btn.disabled = true;
+    ui.gabungMsg = null;
+    try {
+      await syncNow(false);
+      const ownerId = await cloud.staffApi.gabung(f.kode.value, f.nama.value.trim());
+      const peran = { owner_id: ownerId, nama: f.nama.value.trim() };
+      localStorage.setItem(KEY_PERAN, JSON.stringify({ userId: cloud.user.id, peran }));
+      store.clear();
+      mulaiStaff(cloud.user, peran);
+      ui.view = 'kasir';
+      await syncStaff().catch(() => {});
+      toast(t('Anda sekarang staff'));
+    } catch (err) {
+      ui.gabungMsg = { type: 'err', text: pesanStaff(err) };
+    }
+    btn.disabled = false;
+    render();
   }
 
   function initCloud() {
@@ -1221,7 +1551,7 @@
 
   // Kalau data diubah di tab lain pada perangkat yang sama, muat ulang supaya tidak saling menimpa.
   window.addEventListener('storage', (e) => {
-    if (e.key === KelolaStore.KEY || e.key === KelolaBahasa.KEY) location.reload();
+    if (e.key === KelolaStore.KEY || e.key === KelolaBahasa.KEY || e.key === KelolaStaff.KEY) location.reload();
   });
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

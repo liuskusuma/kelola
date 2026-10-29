@@ -6,7 +6,7 @@
   'use strict';
 
   const KEY = 'kelola:pengaturan';
-  const BAWAAN = { bahasa: 'id', tema: 'terang' };
+  const BAWAAN = { bahasa: 'id', tema: 'terang', kunci: null };
 
   const EN = {
     // Menu dan judul
@@ -263,6 +263,46 @@
     'Kirim sebagai teks': 'Send as text',
     'Simpan gambarnya, lalu kirim dari WhatsApp seperti mengirim foto.': 'Save the image, then send it from WhatsApp like any photo.',
     'Batalkan penjualan ini? Stok produk dan bahan akan dikembalikan.': 'Cancel this sale? Product and ingredient stock will be put back.',
+
+    // Staff dan mode kasir
+    'Belum ada produk. Minta owner menambahkan produk dulu.': 'No products yet. Ask the owner to add products first.',
+    'oleh {nama}': 'by {nama}',
+    'Mode kasir': 'Cashier mode',
+    'HP ini sedang dikunci ke kasir. Modal, laba, produk, dan laporan disembunyikan.': 'This phone is locked to the cashier. Costs, profit, products, and reports are hidden.',
+    'PIN owner': 'Owner PIN',
+    'Buka kunci': 'Unlock',
+    'Akun staff': 'Staff account',
+    'Staff di {usaha}. Akun ini hanya bisa memakai kasir.': 'Staff at {usaha}. This account can only use the cashier.',
+    'Penjualan Anda hari ini': 'Your sales today',
+    '{n} penjualan belum terkirim': '{n} sales not sent yet',
+    'Mode kasir untuk HP bersama': 'Cashier mode for a shared phone',
+    'Kunci HP atau tablet ini supaya hanya kasir yang bisa dibuka. Modal, laba, produk, dan laporan disembunyikan sampai PIN owner dimasukkan.': 'Lock this phone or tablet so only the cashier can be opened. Costs, profit, products, and reports stay hidden until the owner PIN is entered.',
+    'Buat PIN (4–8 angka)': 'Create a PIN (4–8 digits)',
+    'Kunci ke kasir': 'Lock to cashier',
+    'Fitur staff belum disiapkan di Supabase. Jalankan supabase/staff.sql sekali (lihat README).': 'Staff accounts are not set up in Supabase yet. Run supabase/staff.sql once (see the README).',
+    'Bergabung {tanggal}': 'Joined {tanggal}',
+    'Belum ada staff.': 'No staff yet.',
+    'Memuat…': 'Loading…',
+    'Kode undangan (berlaku 7 hari, sekali pakai):': 'Invite code (valid for 7 days, one use):',
+    'Minta staff membuka Kelola, daftar dengan email sendiri, lalu masukkan kode ini di Akun.': 'Ask your staff member to open Kelola, sign up with their own email, then enter this code under Account.',
+    'Staff memakai HP sendiri dan hanya bisa membuka kasir. Modal, laba, laporan, dan bahan baku tidak dikirim ke HP staff.': 'Staff use their own phone and can only open the cashier. Costs, profit, reports, and ingredients are never sent to their phone.',
+    'Buat kode undangan': 'Create invite code',
+    'Staff': 'Staff',
+    'Bergabung sebagai staff': 'Join as staff',
+    'Kalau Anda staff, masukkan kode undangan dari owner. Setelah itu akun ini hanya bisa memakai kasir.': 'If you are staff, enter the invite code from the owner. After that this account can only use the cashier.',
+    'Kode undangan': 'Invite code',
+    'Nama Anda': 'Your name',
+    'Gabung': 'Join',
+    'PIN harus 4–8 angka.': 'The PIN must be 4–8 digits.',
+    'HP ini dikunci ke kasir': 'This phone is locked to the cashier',
+    'Kunci kasir dibuka': 'Cashier lock removed',
+    'PIN salah.': 'Wrong PIN.',
+    'Akun ini sudah tidak terdaftar sebagai staff. Hubungi owner.': 'This account is no longer registered as staff. Contact the owner.',
+    'Kode undangan salah, sudah dipakai, atau sudah kedaluwarsa.': 'The invite code is wrong, already used, or expired.',
+    'Kode ini dibuat oleh akun Anda sendiri. Masuk dengan akun staff untuk memakainya.': 'This code was made by your own account. Sign in with the staff account to use it.',
+    'Hapus {nama} dari staff? Akun itu tidak bisa memakai kasir Anda lagi.': 'Remove {nama} from staff? That account will no longer be able to use your cashier.',
+    'Akun ini sudah punya data usaha sendiri. Setelah bergabung sebagai staff, akun ini hanya bisa memakai kasir owner. Lanjutkan?': 'This account already has its own business data. After joining as staff it can only use the owner\'s cashier. Continue?',
+    'Anda sekarang staff': 'You are now staff',
   };
 
   const KAMUS = { en: EN };
@@ -281,9 +321,11 @@
       const raw = storage.getItem(KEY);
       const p = raw ? JSON.parse(raw) : {};
       const bahasaAda = p.bahasa === 'id' || Object.prototype.hasOwnProperty.call(KAMUS, p.bahasa);
+      const kunci = p.kunci && typeof p.kunci.hash === 'string' && typeof p.kunci.garam === 'string' ? p.kunci : null;
       return {
         bahasa: bahasaAda ? p.bahasa : BAWAAN.bahasa,
         tema: ['terang', 'gelap', 'otomatis'].includes(p.tema) ? p.tema : BAWAAN.tema,
+        kunci, // mode kasir dengan PIN: { hash, garam } atau null
       };
     } catch (e) {
       return Object.assign({}, BAWAAN);
@@ -291,7 +333,7 @@
   }
 
   function simpanPengaturan(storage, p) {
-    try { storage.setItem(KEY, JSON.stringify({ bahasa: p.bahasa, tema: p.tema })); } catch (e) { /* penyimpanan penuh */ }
+    try { storage.setItem(KEY, JSON.stringify({ bahasa: p.bahasa, tema: p.tema, kunci: p.kunci || null })); } catch (e) { /* penyimpanan penuh */ }
   }
 
   const api = { buat, bacaPengaturan, simpanPengaturan, KEY, EN };

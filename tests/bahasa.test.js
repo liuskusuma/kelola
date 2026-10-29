@@ -39,11 +39,11 @@ test('setiap teks di app.js punya terjemahan Inggris', () => {
 
 test('pengaturan bawaan: Bahasa Indonesia dan tampilan terang', () => {
   const s = memoryStorage();
-  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'id', tema: 'terang' });
-  B.simpanPengaturan(s, { bahasa: 'en', tema: 'gelap' });
-  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'en', tema: 'gelap' });
+  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'id', tema: 'terang', kunci: null });
+  B.simpanPengaturan(s, { bahasa: 'en', tema: 'gelap', kunci: { hash: 'abc', garam: 'x' } });
+  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'en', tema: 'gelap', kunci: { hash: 'abc', garam: 'x' } });
   s.setItem(B.KEY, '{"bahasa":"xx","tema":"ungu"}');
-  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'id', tema: 'terang' });
+  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'id', tema: 'terang', kunci: null });
   s.setItem(B.KEY, 'rusak');
-  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'id', tema: 'terang' });
+  assert.deepEqual(B.bacaPengaturan(s), { bahasa: 'id', tema: 'terang', kunci: null });
 });
