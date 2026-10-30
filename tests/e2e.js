@@ -357,6 +357,22 @@ async function tab(ctx, errors) {
   assert.ok(xlsx.includes('Ringkasan') && xlsx.includes('Laba bersih'));
   await p.click('#kirimLaporanDialog >> text=Tutup');
 
+  // 13d. Geser jari ke kiri/kanan untuk pindah halaman.
+  const geser = (dari, ke) => p.evaluate(([x1, x2]) => {
+    const el = document.querySelector('.stats');
+    const t = (x) => new Touch({ identifier: 1, target: el, clientX: x, clientY: 400 });
+    el.dispatchEvent(new TouchEvent('touchstart', { touches: [t(x1)], changedTouches: [t(x1)], bubbles: true }));
+    el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(x2)], bubbles: true }));
+  }, [dari, ke]);
+  await geser(300, 100);
+  await p.waitForSelector('nav button[data-go=akun][aria-current=page]');
+  await p.click('nav >> text=Laporan');
+  await geser(100, 300);
+  await p.waitForSelector('nav button[data-go=produk][aria-current=page]');
+  await p.click('nav >> text=Laporan');
+  await geser(300, 280); // terlalu pendek: tetap di Laporan
+  assert.equal(await p.getAttribute('nav button[data-go=laporan]', 'aria-current'), 'page');
+
   // 14. Foto produk dari galeri: diperkecil, tampil di kasir, ikut ke cloud.
   const gambar = await p.screenshot({ clip: { x: 0, y: 0, width: 800 / 2, height: 300 } });
   await p.click('nav >> text=Produk');

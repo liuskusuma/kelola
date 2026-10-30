@@ -1982,10 +1982,7 @@
     if (g) { tunjukGrafik(g); return; }
     const go = e.target.closest('[data-go]');
     if (go) {
-      ui.view = go.dataset.go;
-      ui.authMsg = null;
-      render();
-      window.scrollTo(0, 0);
+      bukaHalaman(go.dataset.go);
       return;
     }
     const el = e.target.closest('[data-act]');
@@ -2148,6 +2145,52 @@
       case 'ganti-mode': gantiMode(); break;
     }
   });
+
+  function bukaHalaman(view, arah) {
+    ui.view = view;
+    ui.authMsg = null;
+    render();
+    window.scrollTo(0, 0);
+    if (arah) {
+      viewEl.classList.remove('geser-kiri', 'geser-kanan');
+      void viewEl.offsetWidth; // mulai ulang animasi
+      viewEl.classList.add(arah > 0 ? 'geser-kiri' : 'geser-kanan');
+    }
+  }
+
+  // Geser jari ke kiri/kanan untuk pindah ke halaman sebelah (urutan sama dengan menu bawah).
+  let sentuhAwal = null;
+  const bisaGeserSendiri = (el) => {
+    for (; el && el !== document.body; el = el.parentElement) {
+      if (el.matches('input, textarea, select, [contenteditable], .kanvas')) return true;
+      const ox = getComputedStyle(el).overflowX;
+      if ((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth) return true;
+    }
+    return false;
+  };
+  document.addEventListener('touchstart', (e) => {
+    const s = e.touches[0];
+    sentuhAwal = null;
+    if (e.touches.length !== 1 || perluGerbang() || dialog.open) return;
+    // Pinggir layar dipakai HP untuk tombol kembali.
+    if (s.clientX < 24 || s.clientX > window.innerWidth - 24) return;
+    if (bisaGeserSendiri(e.target)) return;
+    sentuhAwal = { x: s.clientX, y: s.clientY, t: Date.now() };
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const a = sentuhAwal;
+    sentuhAwal = null;
+    if (!a || perluGerbang() || dialog.open) return;
+    const s = e.changedTouches[0];
+    const dx = s.clientX - a.x;
+    const dy = s.clientY - a.y;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8 || Date.now() - a.t > 700) return;
+    const urutan = [...document.querySelectorAll('nav.tabs button[data-go]')].filter((b) => !b.hidden).map((b) => b.dataset.go);
+    const i = urutan.indexOf(ui.view);
+    const ke = urutan[i + (dx < 0 ? 1 : -1)];
+    if (i >= 0 && ke) bukaHalaman(ke, dx < 0 ? 1 : -1);
+  }, { passive: true });
+  document.addEventListener('touchcancel', () => { sentuhAwal = null; }, { passive: true });
 
   document.addEventListener('input', (e) => {
     if (e.target.id === 'pelangganNama' || e.target.id === 'pelangganWa') {
