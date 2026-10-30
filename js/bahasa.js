@@ -328,7 +328,6 @@
     'Contoh: Bu Ani': 'Example: Mrs. Ani',
     'No. WhatsApp (boleh kosong)': 'WhatsApp no. (optional)',
     'Penjualan dicatat sebagai tagihan. Tagih lewat WhatsApp dan tandai lunas di Laporan.': 'The sale is recorded as unpaid. Send the bill on WhatsApp and mark it paid in Reports.',
-    'Belum lunas: {pelanggan}, sisa {sisa}': 'Unpaid: {pelanggan}, {sisa} left',
     'Lunas · {pelanggan}': 'Paid · {pelanggan}',
     'Belum lunas': 'Unpaid',
     'Sisa {sisa} dari {total}': '{sisa} left of {total}',

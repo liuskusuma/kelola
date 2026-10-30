@@ -466,7 +466,7 @@
         : `<div class="empty">${t('Belum ada pengeluaran di periode ini. Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.')}</div>`}</div>
       <div class="group-title">${t('Riwayat penjualan')}</div>
       <div class="card">${trx.length
-        ? `<ul class="list">${trx.map((r) => `<li class="row"><div><div><span class="nama">${rp(r.data.total)}</span> <span class="small muted">· ${t('laba')} ${rp(r.data.laba)}</span></div>
+        ? `<ul class="list">${trx.map((r) => `<li class="row${P.sisaTagihan(r.data) > 0 ? ' belum' : ''}"><div><div><span class="nama">${rp(r.data.total)}</span> <span class="small muted">· ${t('laba')} ${rp(r.data.laba)}</span></div>
             <div class="small muted">${fmtWaktu(r.data.waktu)}${r.data.staff ? ' · ' + t('oleh {nama}', { nama: esc(r.data.staff) }) : ''} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div>${tagBayar(r.data)}</div>
             <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${r.id}">${t('Struk')}</button>
             <button class="btn kecil danger" data-act="batal-trx" data-id="${r.id}">${t('Batalkan')}</button></div></li>`).join('')}</ul>`
@@ -549,7 +549,8 @@
   function tagBayar(d) {
     if (d.metode === 'nanti') {
       return P.sisaTagihan(d) > 0
-        ? `<div class="small warn">${t('Belum lunas: {pelanggan}, sisa {sisa}', { pelanggan: esc(d.pelanggan.nama), sisa: rp(P.sisaTagihan(d)) })}</div>`
+        ? `<div class="tanda-belum"><span class="label-belum">${t('Belum lunas')}</span>
+            <b>${esc(d.pelanggan.nama)}</b><div class="small">${t('Sisa {sisa} dari {total}', { sisa: rp(P.sisaTagihan(d)), total: rp(d.total) })}</div></div>`
         : `<div class="small ok">${t('Lunas · {pelanggan}', { pelanggan: esc(d.pelanggan.nama) })}</div>`;
     }
     return d.metode === 'qris' ? `<span class="tag">QRIS</span>` : '';

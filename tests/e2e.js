@@ -454,6 +454,7 @@ async function device(browser) {
   await p.click('nav >> text=Laporan');
   await p.click('text=Hari ini');
   assert.ok(norm(await p.textContent('main')).includes('oleh Budi'));
+  assert.ok(norm(await p.textContent('li.belum .tanda-belum')).includes('Bu Ani'));
 
   // 20b. Tagihan belum lunas: kirim lewat WhatsApp, dicicil, lalu lunas.
   assert.ok(norm(await p.textContent('#tagihan')).includes('Bu Ani'));
@@ -470,6 +471,7 @@ async function device(browser) {
   await p.click('#formLunas >> text=QRIS');
   await p.click('#formLunas button.primary');
   assert.equal(await p.locator('#tagihan').count(), 0);
+  assert.equal(await p.locator('li.belum').count(), 0);
   const lunas = await p.evaluate(() => Kelola.store.list('transaksi').find((r) => r.data.staff).data);
   assert.equal(lunas.lunas, true);
   assert.deepEqual(lunas.dibayar.map((b) => [b.jumlah, b.metode]), [[10000, 'tunai'], [12000, 'qris']]);

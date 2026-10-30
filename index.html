@@ -327,6 +327,14 @@
       font-family: var(--f); font-size: 11px; font-weight: 700; letter-spacing: .3px;
     }
     .aksi { display: flex; gap: 8px; flex: 0 0 auto; }
+    /* Penjualan bayar nanti yang belum lunas di riwayat */
+    .list .row.belum { background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 16px; padding-left: 12px; padding-right: 12px; margin: 4px -8px; }
+    .list li.belum::before, .list li.belum + li::before { display: none; }
+    .tanda-belum { margin-top: 6px; color: var(--fg); overflow-wrap: anywhere; }
+    .label-belum {
+      display: table; margin-bottom: 4px; padding: 2px 8px; border-radius: 999px;
+      background: var(--warn); color: var(--bg); font-size: 11px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase;
+    }
     .peringatan { border-left: 6px solid var(--tanda, var(--yellow)); margin-top: 14px; }
     .baris { display: grid; grid-template-columns: minmax(0, 1fr) 68px 34px 32px; gap: 8px; align-items: center; }
     .baris + .baris { margin-top: 8px; }
