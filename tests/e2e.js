@@ -23,7 +23,7 @@ const log = [];
 const norm = (s) => s.replace(/\u00a0/g, ' ');
 // Bagian di halaman Akun bisa dibuka-tutup; buka semuanya supaya isiannya bisa diklik.
 const bukaLipat = (page) => page.evaluate(() => {
-  ['akunHp', 'profil', 'qris', 'pengaturan', 'cloud', 'staff', 'kunci', 'gabung'].forEach((k) => { Kelola.ui.lipat[k] = true; });
+  ['akunHp', 'profil', 'qris', 'pengaturan', 'cloud', 'faceid', 'staff', 'kunci', 'gabung'].forEach((k) => { Kelola.ui.lipat[k] = true; });
   document.querySelectorAll('details.lipat').forEach((d) => { d.open = true; });
 });
 
@@ -586,6 +586,45 @@ async function tab(ctx, errors) {
   await p2.waitForSelector('nav.tabs');
   assert.equal(await p2.textContent('#subjudul .peran'), 'OWNER');
   await hp.ctx.setOffline(false);
+
+  // 23b. Face ID / sidik jari sebagai pengganti kata sandi owner (authenticator tiruan Chromium).
+  const cdp = await hp.ctx.newCDPSession(p2);
+  await cdp.send('WebAuthn.enable');
+  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: {
+    protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  await p2.reload();
+  await p2.waitForSelector('nav.tabs');
+  await p2.click('nav >> text=Akun');
+  await bukaLipat(p2);
+  await p2.click('#faceId [data-act=faceid-aktifkan]');
+  await p2.waitForSelector('#faceId .msg.ok');
+  assert.ok(norm(await p2.textContent('#faceId')).includes('Aktif di HP ini'));
+  await p2.click('#modeSaatIni >> text=Ganti mode');
+  assert.ok(norm(await p2.textContent('#gerbang')).includes('Masuk dengan Face ID / sidik jari'));
+  await p2.click('#gerbang [data-act=owner-faceid]');
+  await p2.waitForSelector('nav.tabs');
+  assert.equal(await p2.textContent('#subjudul .peran'), 'OWNER');
+  // Wajah tidak cocok: kembali ke isian kata sandi.
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });
+  await p2.click('nav >> text=Akun');
+  await p2.click('#modeSaatIni >> text=Ganti mode');
+  await p2.click('#gerbang [data-act=owner-faceid]');
+  await p2.waitForSelector('#formGerbang');
+  assert.ok(norm(await p2.textContent('#gerbang .msg.err')).includes('Face ID / sidik jari tidak berhasil'));
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: true });
+  await p2.click('#gerbang .btn-faceid');
+  await p2.waitForSelector('nav.tabs');
+  // Matikan: owner kembali memakai kata sandi.
+  await p2.click('nav >> text=Akun');
+  await bukaLipat(p2);
+  await p2.click('#faceId [data-act=faceid-matikan]');
+  await p2.waitForSelector('#faceId [data-act=faceid-aktifkan]');
+  await p2.click('#modeSaatIni >> text=Ganti mode');
+  assert.equal(await p2.locator('#gerbang [data-act=owner-faceid]').count(), 0);
+  await p2.click('#gerbang [data-g=owner]');
+  await p2.fill('#formGerbang input[name=password]', 'rahasia123');
+  await p2.click('#formGerbang button');
+  await p2.waitForSelector('nav.tabs');
 
   // 25. Ganti akun di HP yang sama: data tiap akun terpisah.
   // Tab lain di HP yang sama dimuat ulang setiap data berubah; tutup supaya tidak mengganggu.
