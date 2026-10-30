@@ -20,6 +20,11 @@ const undangan = new Map();
 const penjualan = new Map();
 const log = [];
 const norm = (s) => s.replace(/\u00a0/g, ' ');
+// Bagian di halaman Akun bisa dibuka-tutup; buka semuanya supaya isiannya bisa diklik.
+const bukaLipat = (page) => page.evaluate(() => {
+  ['profil', 'qris', 'pengaturan', 'cloud', 'staff', 'kunci', 'gabung'].forEach((k) => { Kelola.ui.lipat[k] = true; });
+  document.querySelectorAll('details.lipat').forEach((d) => { d.open = true; });
+});
 
 async function mock(route) {
   const req = route.request();
@@ -94,7 +99,7 @@ async function mock(route) {
       .forEach((j) => j.data.items.forEach((i) => { tertunda[i.produkId] = (tertunda[i.produkId] || 0) + i.qty; }));
     const prof = milik.find((r) => r.kind === 'profil');
     return json(200, {
-      usaha: { namaUsaha: prof ? prof.data.namaUsaha : null, kontak: prof ? prof.data.kontak : null },
+      usaha: { namaUsaha: prof ? prof.data.namaUsaha : null, kontak: prof ? prof.data.kontak : null, qris: prof ? prof.data.qris || null : null },
       produk: milik.filter((r) => r.kind === 'produk').map((r) => ({
         id: r.id, nama: r.data.nama, harga: r.data.harga, satuan: r.data.satuan, foto: r.data.foto, mode: r.data.mode, paket: r.data.paket,
         stok: typeof r.data.stok === 'number' ? r.data.stok - (tertunda[r.id] || 0) : null,
@@ -160,6 +165,7 @@ async function device(browser) {
 
   // 3. Login: kata sandi salah, lalu benar. Data lokal terkirim ke cloud.
   await p.click('nav >> text=Akun');
+  await bukaLipat(p);
   await p.fill('input[name=email]', USER.email);
   await p.fill('input[name=password]', 'salah1');
   await p.click('#formAuth button');
@@ -175,6 +181,7 @@ async function device(browser) {
   const laptop = await device(browser);
   const l = laptop.page;
   await l.click('nav >> text=Akun');
+  await bukaLipat(l);
   await l.fill('input[name=email]', USER.email);
   await l.fill('input[name=password]', 'rahasia123');
   await l.click('#formAuth button');
@@ -189,6 +196,7 @@ async function device(browser) {
   await l.click('#formProduk button.primary');
   await l.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan');
   await p.click('nav >> text=Akun');
+  await bukaLipat(p);
   await p.click('text=Sinkronkan sekarang');
   await p.waitForTimeout(500);
   await p.click('nav >> text=Produk');
@@ -213,6 +221,7 @@ async function device(browser) {
 
   // 8. Keluar menghapus data lokal.
   await l.click('nav >> text=Akun');
+  await bukaLipat(l);
   await l.click('text=Keluar');
   await l.waitForSelector('#formAuth');
   await l.click('nav >> text=Produk');
@@ -301,6 +310,17 @@ async function device(browser) {
   await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
   assert.ok([...rows.values()].some((r) => r.kind === 'bahan') && [...rows.values()].some((r) => r.kind === 'pengeluaran'));
 
+  // 13b. Laporan dengan tanggal pilihan sendiri.
+  const omzetHariIni = await angkaDi('.stat:has-text("Omzet")');
+  await p.click('.seg >> text=Tanggal');
+  const tgl = (geser) => p.evaluate((g) => { const d = new Date(); d.setDate(d.getDate() + g); return d.toLocaleDateString('sv'); }, geser);
+  await p.fill('[data-tanggal=dari]', await tgl(-3));
+  await p.fill('[data-tanggal=sampai]', await tgl(-1));
+  await p.waitForFunction(() => document.querySelector('.stat.utama .value').textContent.replace(/\D/g, '') === '0');
+  await p.fill('[data-tanggal=sampai]', await tgl(0));
+  await p.waitForFunction((n) => +document.querySelector('.stat.utama .value').textContent.replace(/\D/g, '') === n, omzetHariIni);
+  await p.click('.seg >> text=Hari ini');
+
   // 14. Foto produk dari galeri: diperkecil, tampil di kasir, ikut ke cloud.
   const gambar = await p.screenshot({ clip: { x: 0, y: 0, width: 800 / 2, height: 300 } });
   await p.click('nav >> text=Produk');
@@ -320,6 +340,7 @@ async function device(browser) {
   const latar = () => p.evaluate(() => getComputedStyle(document.body).backgroundColor);
   assert.equal(await latar(), 'rgb(242, 245, 250)');
   await p.click('nav >> text=Akun');
+  await bukaLipat(p);
   await p.click('#pengaturan >> text=Gelap');
   assert.equal(await latar(), 'rgb(20, 35, 79)');
   await p.click('#pengaturan >> text=Ikuti HP');
@@ -334,8 +355,16 @@ async function device(browser) {
   await p.click('nav >> text=Reports');
   assert.ok(norm(await p.textContent('main')).includes('Net profit'));
   await p.click('nav >> text=Account');
+  await bukaLipat(p);
   await p.click('#pengaturan >> text=Bahasa Indonesia');
   assert.equal(await p.textContent('#judul'), 'Akun');
+
+  // 16b. Owner menyimpan gambar QRIS di Akun.
+  await p.setInputFiles('[data-qris]', { name: 'qris.png', mimeType: 'image/png', buffer: gambar });
+  await p.waitForSelector('#qrisSetel img.qris-gambar');
+  assert.ok((await p.evaluate(() => Kelola.store.get('profil').data.qris)).startsWith('data:image/jpeg'));
+  await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
+  assert.ok([...rows.values()].some((r) => r.id === 'profil' && r.data.qris));
 
   // 17. Owner membuat kode undangan staff.
   await p.click('#staff >> text=Buat kode undangan');
@@ -346,6 +375,7 @@ async function device(browser) {
   const hpStaff = await device(browser);
   const s = hpStaff.page;
   await s.click('nav >> text=Akun');
+  await bukaLipat(s);
   await s.fill('input[name=email]', STAFF.email);
   await s.fill('input[name=password]', 'rahasia123');
   await s.click('#formAuth button');
@@ -364,8 +394,12 @@ async function device(browser) {
   const simpananStaff = await s.evaluate(() => Object.keys(localStorage).map((k) => localStorage.getItem(k)).join(''));
   assert.ok(!/"(modal|resep|biayaLain|laba)":/.test(simpananStaff), 'modal tidak sampai ke HP staff');
 
-  // 19. Staff menjual 2 keripik; penjualan terkirim ke owner.
+  // 19. Staff menjual 2 keripik; penjualan terkirim ke owner. QRIS owner bisa ditunjukkan ke pembeli.
   await s.click('.tile:has-text("Keripik pedas")');
+  await s.click('[data-act=qris]');
+  await s.waitForSelector('#qrisKasir img.qris-gambar');
+  await s.click('dialog >> text=Tutup');
+  assert.equal(await s.locator('#qrisSetel').count(), 0);
   await s.click('.tile:has-text("Keripik pedas")');
   await s.click('text=Simpan penjualan');
   await s.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
@@ -375,6 +409,7 @@ async function device(browser) {
   await s.waitForSelector('#strukGambar');
   await s.click('dialog >> text=Tutup');
   await s.click('nav >> text=Akun');
+  await bukaLipat(s);
   assert.ok(norm(await s.textContent('main')).includes('1 · Rp 22.000'));
 
   // 20. Owner sinkron: penjualan staff masuk laporan dengan laba, stok terpotong, tidak dobel.
@@ -397,6 +432,7 @@ async function device(browser) {
 
   // 21. Owner menghapus staff: akun itu tidak bisa memakai kasir lagi.
   await p.click('nav >> text=Akun');
+  await bukaLipat(p);
   await p.waitForSelector('#staff li:has-text("Budi")');
   await p.click('#staff li:has-text("Budi") >> text=Hapus');
   await p.waitForSelector('#staff >> text=Belum ada staff.');
@@ -413,6 +449,7 @@ async function device(browser) {
   await p.waitForSelector('.tile');
   assert.deepEqual(await p.locator('nav.tabs button:visible').allInnerTexts(), ['Kasir', 'Akun']);
   await p.click('nav >> text=Akun');
+  await bukaLipat(p);
   await p.fill('#formBukaKunci input[name=pin]', '9999');
   await p.click('#formBukaKunci button');
   await p.waitForSelector('.msg.err');

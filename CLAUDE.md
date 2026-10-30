@@ -14,3 +14,5 @@ Aplikasi web statis (tanpa build step) untuk UMKM: kalkulator harga jual, kasir,
 - Uji: `node --test` untuk logika sinkronisasi dan rumus, dan `tests/e2e.js` (Playwright) untuk alur di browser.
 - Akun staff (`supabase/staff.sql`, `js/staff.js`): staff tidak bisa membaca `records` owner. Produk untuk kasir staff diambil lewat fungsi `produk_kasir()` (tanpa modal/resep). Penjualan staff masuk ke tabel `penjualan_staff`; HP owner mengambilnya (sekaligus menandai `diproses`) lalu mengubahnya jadi `transaksi` biasa lewat `KelolaPenjualan.olahPenjualanStaff` di `js/penjualan.js`. Jangan pernah mengirim modal, laba, resep, atau bahan ke HP staff.
 - Mode kasir PIN hanya menyembunyikan tampilan di satu perangkat (`kunci` di `kelola:pengaturan`, PIN disimpan sebagai hash); bukan pengaman data.
+- QRIS disimpan sebagai data URL di `profil.data.qris` (maks 900 px), hanya bisa diubah owner. HP staff menerimanya lewat `produk_kasir()`; setiap mengubah `supabase/staff.sql`, minta pemilik menjalankannya ulang.
+- Halaman Akun memakai bagian yang bisa dibuka-tutup (`lipat()` di `js/app.js`, status di `ui.lipat`). Uji e2e membuka semuanya dengan `bukaLipat()`.

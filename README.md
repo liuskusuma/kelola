@@ -13,6 +13,8 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Kasir.** Ketuk produk untuk menambah ke keranjang, isi uang diterima, kembalian dihitung otomatis.
 - **Struk untuk WhatsApp.** Setiap penjualan bisa dibuatkan struk bergambar untuk dikirim lewat WhatsApp, disimpan sebagai gambar, atau dikirim sebagai teks.
 - **Laporan.** Omzet, laba kotor, pengeluaran, laba bersih, jumlah transaksi, margin rata-rata, produk terlaris, dan riwayat penjualan (hari ini, 7 hari, bulan ini, semua).
+- **Laporan per tanggal.** Selain Hari ini, 7 hari, Bulan ini, dan Semua, pilih **Tanggal** untuk melihat laporan dari tanggal berapa sampai tanggal berapa saja.
+- **QRIS.** Owner menyimpan gambar QRIS usaha di Akun → Pembayaran QRIS. Di kasir muncul tombol **QRIS** untuk ditunjukkan ke pembeli, juga di HP staff. Hanya owner yang bisa mengganti gambarnya.
 - **Pengeluaran.** Catat biaya seperti sewa, listrik, atau gaji supaya laba bersih terlihat.
 - **Foto produk.** Ambil langsung dari kamera atau pilih dari galeri. Foto diperkecil otomatis supaya ringan, lalu tampil di kasir dan daftar produk.
 - **Bahasa dan tampilan.** Di tab Akun bisa memilih Bahasa Indonesia atau English, dan tampilan Terang (bawaan), Gelap, atau Ikuti HP. Pilihan ini disimpan per perangkat.
@@ -41,7 +43,7 @@ Tanpa langkah ini aplikasi tetap jalan, tapi data hanya tersimpan di perangkat.
 
 ### Menyiapkan fitur staff (sekali saja)
 
-Buka **SQL Editor → New query**, tempel isi [`supabase/staff.sql`](supabase/staff.sql), lalu klik **Run**. Skrip ini aman dijalankan ulang. Sebelum dijalankan, bagian Staff di tab Akun menampilkan pesan "Fitur staff belum disiapkan".
+Buka **SQL Editor → New query**, tempel isi [`supabase/staff.sql`](supabase/staff.sql), lalu klik **Run**. Skrip ini aman dijalankan ulang, dan perlu dijalankan ulang setiap kali file itu berubah (misalnya supaya QRIS tampil di HP staff). Sebelum dijalankan, bagian Staff di tab Akun menampilkan pesan "Fitur staff belum disiapkan".
 
 Opsional: kalau ingin pengguna langsung bisa masuk tanpa konfirmasi email, matikan **Authentication → Providers → Email → Confirm email**.
 

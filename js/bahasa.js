@@ -303,6 +303,20 @@
     'Hapus {nama} dari staff? Akun itu tidak bisa memakai kasir Anda lagi.': 'Remove {nama} from staff? That account will no longer be able to use your cashier.',
     'Akun ini sudah punya data usaha sendiri. Setelah bergabung sebagai staff, akun ini hanya bisa memakai kasir owner. Lanjutkan?': 'This account already has its own business data. After joining as staff it can only use the owner\'s cashier. Continue?',
     'Anda sekarang staff': 'You are now staff',
+    // Periode pilihan, QRIS, dan bagian Akun
+    'Tanggal': 'Dates',
+    'Dari tanggal': 'From',
+    'Sampai tanggal': 'To',
+    'Pembayaran QRIS': 'QRIS payment',
+    'Simpan gambar QRIS usaha Anda. Di kasir akan muncul tombol QRIS untuk ditunjukkan ke pembeli. Hanya owner yang bisa mengganti gambar ini.': 'Save your business QRIS image. A QRIS button will appear in the cashier to show buyers. Only the owner can change this image.',
+    'Ganti gambar QRIS': 'Change QRIS image',
+    'Pilih gambar QRIS': 'Choose QRIS image',
+    'Hapus QRIS': 'Remove QRIS',
+    'Gambar QRIS tersimpan': 'QRIS image saved',
+    'Bayar dengan QRIS': 'Pay with QRIS',
+    'Minta pembeli memindai kode ini, lalu cek notifikasi pembayaran masuk sebelum menyimpan penjualan.': 'Ask the buyer to scan this code, then check that the payment arrived before saving the sale.',
+    'QRIS': 'QRIS',
+    'Hapus gambar QRIS?': 'Remove the QRIS image?',
   };
 
   const KAMUS = { en: EN };

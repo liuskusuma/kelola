@@ -226,6 +226,13 @@
     .seg { display: flex; gap: 4px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 999px; padding: 4px; margin-bottom: 18px; }
     .seg button { flex: 1; border: 0; background: none; color: var(--muted); border-radius: 999px; padding: 8px 6px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .seg button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: var(--raised-sm); font-weight: 700; }
+    .seg.periode button { padding: 8px 2px; font-size: 13px; }
+    details.lipat > summary { cursor: pointer; list-style: none; }
+    details.lipat > summary::-webkit-details-marker { display: none; }
+    details.lipat > summary::after { content: '›'; font-size: 20px; line-height: 1; transform: rotate(90deg); transition: transform .15s; }
+    details.lipat[open] > summary::after { transform: rotate(-90deg); }
+    .qris-gambar { display: block; width: 100%; max-width: 260px; margin: 0 auto; border-radius: 14px; background: #fff; }
+    .qris-gambar.besar { max-width: 420px; }
 
     .empty { text-align: center; color: var(--muted); padding: 20px 8px; }
     .msg { font-size: 14px; padding: 10px 14px; border-radius: 16px; }
