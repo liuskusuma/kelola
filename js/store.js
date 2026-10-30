@@ -140,14 +140,26 @@
     }
 
     // Data dibuat sebelum login (tanpa pemilik) ikut ke akun pertama yang login.
-    // Kalau akun lain login di perangkat ini, data lokal akun sebelumnya dihapus.
+    // Kalau akun lain login di perangkat ini (Ganti akun), data akun sebelumnya
+    // disimpan terpisah (termasuk yang belum terkirim), lalu data akun ini dimuat.
     function claim(userId) {
       if (state.meta.owner === userId) return;
       if (state.meta.owner) {
-        state = emptyState();
+        storage.setItem(arsipKey(state.meta.owner), JSON.stringify(state));
+        let arsip = null;
+        try { arsip = JSON.parse(storage.getItem(arsipKey(userId)) || 'null'); } catch (e) { /* rusak */ }
+        storage.removeItem(arsipKey(userId));
+        state = arsip && arsip.records && arsip.meta ? arsip : emptyState();
       } else {
-        Object.values(state.records).forEach((r) => { r.dirty = true; });
-        state.meta.lastPull = null;
+        // Belum ada pemilik: catatan tanpa akun ikut ke akun ini, digabung dengan data akun ini
+        // yang tersimpan di HP (kalau akun ini pernah masuk lalu akun lain keluar).
+        let arsip = null;
+        try { arsip = JSON.parse(storage.getItem(arsipKey(userId)) || 'null'); } catch (e) { /* rusak */ }
+        storage.removeItem(arsipKey(userId));
+        const lokal = Object.values(state.records);
+        if (arsip && arsip.records && arsip.meta) state = arsip;
+        else state.meta.lastPull = null;
+        lokal.forEach((r) => { state.records[r.id] = Object.assign(r, { dirty: true }); });
       }
       state.meta.owner = userId;
       save();
@@ -166,7 +178,20 @@
     return { put, remove, get, has, list, dirtyRecords, markClean, applyRemote, getMeta, setMeta, claim, clear, subscribe };
   }
 
-  const api = { createStore, uuid, KEY };
+  // Tempat data akun lain di perangkat yang sama, saat akun itu tidak sedang aktif.
+  function arsipKey(userId) {
+    return KEY + ':akun:' + userId;
+  }
+
+  // Jumlah perubahan yang belum terkirim di data akun yang tidak aktif.
+  function arsipBelumTerkirim(storage, userId) {
+    try {
+      const s = JSON.parse(storage.getItem(arsipKey(userId)) || 'null');
+      return s ? Object.values(s.records).filter((r) => r.dirty).length : 0;
+    } catch (e) { return 0; }
+  }
+
+  const api = { createStore, uuid, KEY, arsipKey, arsipBelumTerkirim };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KelolaStore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

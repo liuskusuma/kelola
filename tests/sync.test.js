@@ -1,12 +1,13 @@
 // Jalankan: node --test
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createStore } = require('../js/store.js');
+const KelolaStoreApi = require('../js/store.js');
+const { createStore } = KelolaStoreApi;
 const { createSync } = require('../js/sync.js');
 
 function memoryStorage() {
   const m = new Map();
-  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
 }
 
 // Server palsu yang meniru tabel `records` + trigger di supabase/schema.sql.
@@ -126,4 +127,34 @@ test('data sebelum login ikut ke akun; akun lain di perangkat yang sama mulai ko
   assert.equal(store.dirtyRecords().length, 1);
   store.claim('user-2');
   assert.equal(store.get(p.id), null);
+});
+
+test('ganti akun: data tiap akun disimpan terpisah, termasuk yang belum terkirim', () => {
+  const mem = memoryStorage();
+  const store = createStore(mem);
+  store.claim('user-1');
+  const p = store.put('produk', { nama: 'Bakso' });
+  store.claim('user-2');
+  const q = store.put('produk', { nama: 'Es teh' });
+  assert.equal(store.get(p.id), null);
+  assert.equal(KelolaStoreApi.arsipBelumTerkirim(mem, 'user-1'), 1);
+  store.claim('user-1');
+  assert.equal(store.get(p.id).data.nama, 'Bakso');
+  assert.equal(store.get(q.id), null);
+  assert.equal(store.dirtyRecords().length, 1, 'perubahan yang belum terkirim tetap ada');
+  assert.equal(store.getMeta().owner, 'user-1');
+  store.claim('user-2');
+  assert.equal(store.get(q.id).data.nama, 'Es teh');
+});
+
+test('setelah keluar, masuk lagi ke akun lain memuat data akun itu dari HP', () => {
+  const mem = memoryStorage();
+  const store = createStore(mem);
+  store.claim('user-1');
+  const p = store.put('produk', { nama: 'Bakso' });
+  store.claim('user-2');
+  store.clear(); // user-2 keluar
+  store.claim('user-1');
+  assert.equal(store.get(p.id).data.nama, 'Bakso');
+  assert.equal(store.dirtyRecords().length, 1);
 });
