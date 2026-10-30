@@ -491,7 +491,7 @@
     const total = list.reduce((s, r) => s + P.sisaTagihan(r.data), 0);
     const hari = (iso) => Math.floor((Date.now() - Date.parse(iso)) / 864e5);
     return `<div class="group-title"><span>${t('Belum lunas')}</span><span>${rp(total)}</span></div>
-      <div class="card peringatan" id="tagihan" style="margin-top:0"><ul class="list">${list.map((r) => {
+      <div class="card" id="tagihan"><ul class="list">${list.map((r) => {
         const d = r.data;
         const umur = hari(d.waktu);
         return `<li class="stack"><div class="row"><div><div class="nama">${esc(d.pelanggan.nama)}</div>

@@ -107,6 +107,7 @@
         '--fg': hsl(h, 0.4, 0.13), '--muted': hsl(h, 0.15, 0.4), '--faint': hsl(h, 0.12, 0.6),
         '--sep': `rgba(${r}, ${g}, ${b}, .1)`,
         '--primary': utama, '--on-primary': '#ffffff', '--accent-text': utama,
+        '--tanda': utama,
       },
       gelap: {
         '--navy': utama, '--yellow': aksen,
@@ -115,6 +116,7 @@
         '--fg': '#f7f5f2', '--muted': hsl(h, 0.2, 0.75), '--faint': hsl(h, 0.15, 0.6),
         '--sep': 'rgba(255, 255, 255, .08)',
         '--primary': aksen, '--on-primary': utama, '--accent-text': aksen,
+        '--tanda': aksen,
       },
     };
   }
