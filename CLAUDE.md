@@ -16,3 +16,5 @@ Aplikasi web statis (tanpa build step) untuk UMKM: kalkulator harga jual, kasir,
 - Mode kasir PIN hanya menyembunyikan tampilan di satu perangkat (`kunci` di `kelola:pengaturan`, PIN disimpan sebagai hash); bukan pengaman data.
 - QRIS disimpan sebagai data URL di `profil.data.qris` (maks 900 px), hanya bisa diubah owner. HP staff menerimanya lewat `produk_kasir()`; setiap mengubah `supabase/staff.sql`, minta pemilik menjalankannya ulang.
 - Halaman Akun memakai bagian yang bisa dibuka-tutup (`lipat()` di `js/app.js`, status di `ui.lipat`). Uji e2e membuka semuanya dengan `bukaLipat()`.
+- Cara bayar penjualan: `transaksi.data.metode` = `tunai` (bawaan, juga untuk data lama tanpa metode), `qris`, atau `nanti`. Penjualan `nanti` punya `pelanggan {nama, wa}`, `dibayar [{waktu, jumlah, metode}]`, dan `lunas`; sisa dihitung `KelolaPenjualan.sisaTagihan`. Omzet dan laba tetap dihitung saat penjualan, bukan saat dibayar.
+- Logo dan warna usaha ada di `profil.data.logo` (maks 256 px), `palet`, dan `warna {utama, aksen}`. Variabel CSS dibuat `js/warna.js` lalu dipasang di `<style id="temaUsaha">`. Tanpa `warna`, tampilan memakai navy dan kuning Kelola.

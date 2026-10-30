@@ -110,7 +110,7 @@
       padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
       background: var(--bg);
     }
-    header.nav .logo { width: 48px; height: 48px; border-radius: 12px; box-shadow: var(--raised-sm); flex: 0 0 auto; }
+    header.nav .logo { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; background: #fff; box-shadow: var(--raised-sm); flex: 0 0 auto; }
     header.nav .titles { flex: 1 1 auto; min-width: 0; }
     header.nav h1 {
       font-family: var(--f-display); font-style: italic; font-weight: 800;
@@ -233,6 +233,12 @@
     details.lipat > summary::-webkit-details-marker { display: none; }
     details.lipat > summary::after { content: '›'; font-size: 20px; line-height: 1; transform: rotate(90deg); transition: transform .15s; }
     details.lipat[open] > summary::after { transform: rotate(-90deg); }
+    .pesan-wa { white-space: pre-wrap; font: inherit; font-size: 14px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 16px; padding: 12px 14px; margin: 0; max-height: 40vh; overflow: auto; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+    .swatch { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--cell); box-shadow: var(--raised-sm); cursor: pointer; padding: 0; }
+    .swatch.bawaan { background: linear-gradient(135deg, #0a2a6e 50%, #fecb10 50%); }
+    .swatch[aria-pressed="true"] { outline: 3px solid var(--fg); outline-offset: 2px; }
+    .logo-pratinjau { width: 64px; height: 64px; border-radius: 14px; object-fit: contain; background: #fff; box-shadow: var(--raised-sm); flex: 0 0 auto; }
     .qris-gambar { display: block; width: 100%; max-width: 260px; margin: 0 auto; border-radius: 14px; background: #fff; }
     .qris-gambar.besar { max-width: 420px; }
 
@@ -382,6 +388,7 @@
   <script src="js/bahasa.js"></script>
   <script src="js/store.js"></script>
   <script src="js/hitung.js"></script>
+  <script src="js/warna.js"></script>
   <script src="js/penjualan.js"></script>
   <script src="js/staff.js"></script>
   <script src="js/sync.js"></script>

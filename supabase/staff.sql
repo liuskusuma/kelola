@@ -124,7 +124,8 @@ begin
     group by 1
   )
   select jsonb_build_object(
-    'usaha', (select jsonb_build_object('namaUsaha', r.data->>'namaUsaha', 'kontak', r.data->>'kontak', 'qris', r.data->>'qris')
+    'usaha', (select jsonb_build_object('namaUsaha', r.data->>'namaUsaha', 'kontak', r.data->>'kontak', 'qris', r.data->>'qris',
+                                       'logo', r.data->>'logo', 'warna', r.data->'warna')
               from public.records r where r.user_id = pemilik and r.id = 'profil' and not r.deleted),
     'produk', coalesce((
       select jsonb_agg(jsonb_build_object(

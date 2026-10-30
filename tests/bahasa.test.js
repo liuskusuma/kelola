@@ -29,6 +29,7 @@ test('setiap teks di app.js punya terjemahan Inggris', () => {
     'Kasir', 'Produk', 'Laporan', 'Akun',
     'Catat penjualan', 'Harga jual, resep & stok', 'Omzet, pengeluaran & laba', 'Profil, pengaturan & cloud',
     'Modal naik dari {x}', 'Modal turun dari {x}',
+    'Sudah dibayar, simpan', 'Simpan sebagai tagihan', 'Tagihan {total} tersimpan',
     'Stok produk jadi (kosongkan kalau dibuat saat dipesan)', 'Stok (kosongkan jika tidak dihitung)',
     'Sewa tempat', 'Listrik & air', 'Gaji', 'Transportasi', 'Iklan & promosi', 'Peralatan', 'Lainnya',
     ...H.pilihanHarga(1000, 30).map((p) => p.label),
