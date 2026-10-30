@@ -55,3 +55,30 @@ test('skala sumbu dan angka ringkas', () => {
   assert.equal(G.ringkas(2000000), '2jt');
   assert.equal(G.ringkas(800), '800');
 });
+
+test('periode pembanding sampai jam yang sama', () => {
+  const kini = lokal(2026, 10, 30, 14);
+  assert.deepEqual(G.periodeLalu('hari', lokal(2026, 10, 30), Infinity, kini), [lokal(2026, 10, 29), lokal(2026, 10, 29, 14)]);
+  assert.deepEqual(G.periodeLalu('7hari', lokal(2026, 10, 24), Infinity, kini), [lokal(2026, 10, 17), lokal(2026, 10, 23, 14)]);
+  assert.deepEqual(G.periodeLalu('bulan', lokal(2026, 10, 1), Infinity, kini), [lokal(2026, 9, 1), lokal(2026, 9, 30, 14)]);
+  assert.deepEqual(G.periodeLalu('pilih', lokal(2026, 10, 8), lokal(2026, 10, 15), kini), [lokal(2026, 10, 1), lokal(2026, 10, 8)]);
+  assert.equal(G.periodeLalu('semua', 0, Infinity, kini), null);
+});
+
+test('perubahan naik, turun, dan tanpa pembanding', () => {
+  assert.deepEqual(G.perubahan(120, 100), { arah: 'naik', persen: 20 });
+  assert.deepEqual(G.perubahan(75, 100), { arah: 'turun', persen: 25 });
+  assert.deepEqual(G.perubahan(100, 100), { arah: 'sama', persen: 0 });
+  assert.deepEqual(G.perubahan(50, 0), { arah: 'naik', persen: null });
+  assert.equal(G.perubahan(0, 0), null);
+});
+
+test('jam paling ramai', () => {
+  const trx = [
+    { waktu: iso(2026, 10, 30, 9), total: 1000 },
+    { waktu: iso(2026, 10, 29, 9), total: 1000 },
+    { waktu: iso(2026, 10, 30, 13), total: 9000 },
+  ];
+  assert.deepEqual(G.jamRamai(trx), { jam: 9, n: 2, omzet: 2000 });
+  assert.equal(G.jamRamai([]), null);
+});

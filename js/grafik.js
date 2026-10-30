@@ -76,7 +76,45 @@
     return String(Math.round(n));
   }
 
-  const api = { pilihSatuan, kelompokkan, skala, ringkas };
+  // Periode pembanding dengan panjang yang sama, sampai jam yang sama (supaya adil saat hari/bulan belum selesai).
+  // periode: 'hari' | '7hari' | 'bulan' | 'pilih' | 'semua'. Hasil [dari, sampai) atau null.
+  function periodeLalu(periode, dari, sampai, sekarang) {
+    if (periode === 'semua' || !(dari > 0)) return null;
+    const geser = (w, hari) => { const d = new Date(w); d.setDate(d.getDate() - hari); return d.getTime(); };
+    const akhir = Math.min(sampai, sekarang);
+    if (periode === 'hari') return [geser(dari, 1), geser(akhir, 1)];
+    if (periode === '7hari') return [geser(dari, 7), geser(akhir, 7)];
+    if (periode === 'bulan') {
+      const d = new Date(dari);
+      const a = new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime();
+      return [a, Math.min(a + (akhir - dari), dari)];
+    }
+    return [dari - (sampai - dari), dari];
+  }
+
+  // Naik/turun dibanding periode lalu. persen null kalau periode lalu kosong.
+  function perubahan(kini, lalu) {
+    if (!kini && !lalu) return null;
+    if (!lalu) return { arah: 'naik', persen: null };
+    const persen = Math.round(((kini - lalu) / Math.abs(lalu)) * 100);
+    return { arah: persen > 0 ? 'naik' : persen < 0 ? 'turun' : 'sama', persen: Math.abs(persen) };
+  }
+
+  // Jam paling ramai (jumlah transaksi terbanyak; seri dimenangkan omzet). Hasil jam 0–23 atau null.
+  function jamRamai(trx) {
+    const jam = new Map();
+    trx.forEach((t) => {
+      const h = new Date(t.waktu).getHours();
+      const j = jam.get(h) || { n: 0, omzet: 0 };
+      j.n += 1; j.omzet += t.total || 0;
+      jam.set(h, j);
+    });
+    let terbaik = null;
+    jam.forEach((j, h) => { if (!terbaik || j.n > terbaik.n || (j.n === terbaik.n && j.omzet > terbaik.omzet)) terbaik = { jam: h, n: j.n, omzet: j.omzet }; });
+    return terbaik;
+  }
+
+  const api = { pilihSatuan, kelompokkan, skala, ringkas, periodeLalu, perubahan, jamRamai };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KelolaGrafik = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
