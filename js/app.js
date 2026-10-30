@@ -659,7 +659,8 @@
     }
     if (ui.metode === 'nanti') {
       const kenal = modeStaff() ? [] : daftarPelanggan();
-      return `<div class="two" style="margin-top:14px">
+      // Satu kolom: label WhatsApp panjang dan membuat dua isian tidak sejajar kalau berdampingan.
+      return `<div class="stack" style="margin-top:14px">
           <label class="field"><span>${t('Nama pembeli')}</span><input id="pelangganNama" list="daftarPelanggan" autocomplete="off" value="${esc(ui.pelanggan.nama)}" placeholder="${t('Contoh: Bu Ani')}"></label>
           <label class="field"><span>${t('No. WhatsApp (boleh kosong)')}</span><input id="pelangganWa" type="tel" inputmode="tel" value="${esc(ui.pelanggan.wa)}" placeholder="0812…"></label>
         </div>
@@ -2149,6 +2150,8 @@
   function bukaHalaman(view, arah) {
     ui.view = view;
     ui.authMsg = null;
+    // Perbarui daftar staff setiap kali tab Akun dibuka, supaya staff yang baru bergabung terlihat.
+    if (view === 'akun' && cloud.user && cloud.peran === 'owner' && ui.staff.list && !ui.staff.memuat && !ui.staff.belumSiap) muatStaff();
     render();
     window.scrollTo(0, 0);
     if (arah) {
@@ -2620,13 +2623,16 @@
 
   async function muatStaff() {
     ui.staff.memuat = true;
+    const lama = ui.staff.list ? ui.staff.list.length : null;
     try {
       ui.staff.list = await cloud.staffApi.daftarStaff(cloud.user.id);
+      // Ada staff baru bergabung: kode undangan yang tampil sudah terpakai.
+      if (lama != null && ui.staff.list.length > lama) ui.staff.kode = null;
     } catch (err) {
       if (S.belumDisiapkan(err)) ui.staff.belumSiap = true;
       else ui.staff.msg = { type: 'err', text: pesanStaff(err) };
-      // Jangan coba terus-menerus; dimuat lagi saat sinkron berikutnya.
-      ui.staff.list = [];
+      // Jangan coba terus-menerus; dimuat lagi saat tab Akun dibuka lagi.
+      ui.staff.list = ui.staff.list || [];
     }
     ui.staff.memuat = false;
     if (ui.view === 'akun') renderAman();

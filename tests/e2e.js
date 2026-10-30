@@ -456,6 +456,12 @@ async function tab(ctx, errors) {
   assert.ok(await s.evaluate(() => document.querySelector('#temaUsaha').textContent.includes('--navy')), 'warna owner dipakai di HP staff');
   const simpananStaff = await s.evaluate(() => Object.keys(localStorage).map((k) => localStorage.getItem(k)).join(''));
   assert.ok(!/"(modal|resep|biayaLain|laba)":/.test(simpananStaff), 'modal tidak sampai ke HP staff');
+  // Owner membuka tab Akun lagi: staff baru langsung terlihat, kode yang terpakai hilang.
+  await p.click('nav >> text=Kasir');
+  await p.click('nav >> text=Akun');
+  await bukaLipat(p);
+  await p.waitForSelector('#staff li:has-text("Budi")');
+  assert.equal(await p.locator('#kodeUndangan').count(), 0);
 
   // 19. Staff menjual 2 keripik; penjualan terkirim ke owner. QRIS owner bisa ditunjukkan ke pembeli.
   await s.click('.tile:has-text("Keripik pedas")');
