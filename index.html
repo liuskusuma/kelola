@@ -248,6 +248,9 @@
     .grafik { padding-top: 14px; }
     .grafik .legenda { display: flex; gap: 16px; color: var(--muted); margin: 0 0 6px 4px; }
     .grafik i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    .kirim-laporan { margin: -6px 0 18px; gap: 10px; flex-wrap: wrap; }
+    .kirim-laporan .btn { flex: 0 0 auto; white-space: nowrap; }
+    .isi-file { margin: 0; padding-left: 18px; }
     .grafik i.omzet, .grafik path.omzet { background: var(--grafik-1); fill: var(--grafik-1); }
     .grafik i.laba, .grafik path.laba { background: var(--grafik-2); fill: var(--grafik-2); }
     .grafik .kanvas { position: relative; }
@@ -391,6 +394,13 @@
     .gerbang-isi .tengah { text-align: center; margin: 0; }
     .gerbang-isi .link.tengah { align-self: center; text-align: center; font-size: 14px; }
     .gerbang-isi .seg { display: inline-flex; }
+    .akun-chip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 20px; background: var(--cell); box-shadow: var(--raised-sm); }
+    .akun-chip .t, .pilih-akun .t, .akun-hp .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .akun-chip .small, .pilih-akun .small, .akun-hp .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .akun-chip .btn { flex: 0 0 auto; white-space: nowrap; }
+    .pilih-akun { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+    .akun-pilih li + li, .akun-hp + .akun-hp { border-top: 1px solid var(--sep); }
+    .aktif { color: var(--ok); font-weight: 700; white-space: nowrap; }
     .pilih-mode { display: flex; gap: 16px; align-items: center; text-align: left; width: 100%; border: 0; cursor: pointer; padding: 18px; border-radius: 26px; background: var(--cell); box-shadow: var(--raised); color: var(--fg); font: inherit; }
     .pilih-mode:active { box-shadow: var(--inset); }
     .pilih-mode .ik { flex: 0 0 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: var(--navy); }
@@ -450,6 +460,7 @@
   <script src="js/hitung.js"></script>
   <script src="js/warna.js"></script>
   <script src="js/grafik.js"></script>
+  <script src="js/excel.js"></script>
   <script src="js/penjualan.js"></script>
   <script src="js/staff.js"></script>
   <script src="js/sync.js"></script>
