@@ -248,6 +248,11 @@
     .grafik { padding-top: 14px; }
     .grafik .legenda { display: flex; gap: 16px; color: var(--muted); margin: 0 0 6px 4px; }
     .grafik i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    #view.geser-kiri { animation: geser-kiri .22s ease-out; }
+    #view.geser-kanan { animation: geser-kanan .22s ease-out; }
+    @keyframes geser-kiri { from { transform: translateX(28px); opacity: .4; } }
+    @keyframes geser-kanan { from { transform: translateX(-28px); opacity: .4; } }
+    @media (prefers-reduced-motion: reduce) { #view.geser-kiri, #view.geser-kanan { animation: none; } }
     .kirim-laporan { margin: -6px 0 18px; gap: 10px; flex-wrap: wrap; }
     .kirim-laporan .btn { flex: 0 0 auto; white-space: nowrap; }
     .isi-file { margin: 0; padding-left: 18px; }
