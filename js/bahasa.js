@@ -6,7 +6,7 @@
   'use strict';
 
   const KEY = 'kelola:pengaturan';
-  const BAWAAN = { bahasa: 'id', tema: 'terang', kunci: null };
+  const BAWAAN = { bahasa: 'en', tema: 'terang', kunci: null };
 
   const EN = {
     // Menu dan judul
@@ -328,7 +328,6 @@
     'Contoh: Bu Ani': 'Example: Mrs. Ani',
     'No. WhatsApp (boleh kosong)': 'WhatsApp no. (optional)',
     'Penjualan dicatat sebagai tagihan. Tagih lewat WhatsApp dan tandai lunas di Laporan.': 'The sale is recorded as unpaid. Send the bill on WhatsApp and mark it paid in Reports.',
-    'Belum lunas: {pelanggan}, sisa {sisa}': 'Unpaid: {pelanggan}, {sisa} left',
     'Lunas · {pelanggan}': 'Paid · {pelanggan}',
     'Belum lunas': 'Unpaid',
     'Sisa {sisa} dari {total}': '{sisa} left of {total}',
@@ -375,6 +374,36 @@
     'Lihat sebagai tabel': 'View as table',
     'Waktu': 'Time',
     '{n} transaksi': '{n} transactions',
+    // Layar awal: pilih mode
+    'STAFF': 'STAFF',
+    'KASIR': 'CASHIER',
+    'OWNER': 'OWNER',
+    'Buka sebagai': 'Open as',
+    'Masuk sebagai Owner': 'Log in as Owner',
+    'Masuk dengan akun staff': 'Log in with your staff account',
+    'Minta kode undangan ke owner. Daftar dengan email Anda sendiri, lalu masukkan kodenya di menu Akun.': 'Ask the owner for an invite code. Sign up with your own email, then enter the code under Account.',
+    'Pakai tanpa akun (data hanya di HP ini)': 'Use without an account (data stays on this phone)',
+    'Untuk keamanan, kata sandi diminta lagi setiap kali aplikasi ditutup lalu dibuka.': 'For security, your password is asked again every time the app is closed and reopened.',
+    'Kembali pilih mode': 'Back to choose mode',
+    'Daftar akun baru': 'Create a new account',
+    'Nama usaha (untuk owner)': 'Business name (for owners)',
+    'Kata sandi (min. 6 karakter)': 'Password (min. 6 characters)',
+    'Ulangi kata sandi': 'Repeat password',
+    'Akun baru menjadi akun Owner. Staff bisa ditambahkan nanti dari menu Akun.': 'A new account becomes an Owner account. Staff can be added later under Account.',
+    'Masukkan email akun Anda. Kami kirim tautan untuk membuat kata sandi baru.': 'Enter your account email. We will send a link to set a new password.',
+    'Kembali ke Masuk': 'Back to log in',
+    'Owner': 'Owner',
+    'Semua fitur: produk, laporan, staff, dan pengaturan. Perlu kata sandi.': 'All features: products, reports, staff and settings. Password required.',
+    'Kasir / Staff': 'Cashier / Staff',
+    'Langsung buka kasir untuk mencatat penjualan. Modal dan laba tidak tampil.': 'Opens the cashier right away to record sales. Costs and profit are hidden.',
+    'Pilihan ini muncul setiap kali aplikasi dibuka.': 'You will see this choice every time the app opens.',
+    'Baru pakai Kelola?': 'New to Kelola?',
+    'HP ini sedang masuk dengan {email}. Pakai email itu, atau keluar dulu dari menu Akun.': 'This phone is signed in as {email}. Use that email, or log out first under Account.',
+    'Kata sandi dan ulangannya tidak sama.': 'The passwords do not match.',
+    'Tautan untuk membuat kata sandi baru sudah dikirim ke {email}. Cek juga folder spam.': 'A link to set a new password has been sent to {email}. Check your spam folder too.',
+    'Aplikasi sedang dipakai sebagai kasir. Modal, laba, produk, dan laporan disembunyikan.': 'The app is in cashier mode. Costs, profit, products and reports are hidden.',
+    'Ganti mode': 'Switch mode',
+    'Semua fitur terbuka': 'All features unlocked',
   };
 
   const KAMUS = { en: EN };

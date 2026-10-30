@@ -123,16 +123,30 @@ async function mock(route) {
   return route.fulfill({ status: 404, headers: cors, body: '{}' });
 }
 
-async function device(browser) {
+// Satu "perangkat". Uji ini memakai Bahasa Indonesia (bawaan aplikasi English) dan langsung
+// melewati layar awal sebagai owner tanpa akun, kecuali `polos` (layar awal dibiarkan tampil).
+async function device(browser, polos) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   await ctx.route(SB + '/**', mock);
   await ctx.route(BASE + 'js/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: `window.KELOLA_CONFIG={supabaseUrl:'${SB}',supabaseAnonKey:'anon'};` }));
-  const page = await ctx.newPage();
+  if (!polos) await ctx.addInitScript(() => { if (!localStorage.getItem('kelola:pengaturan')) localStorage.setItem('kelola:pengaturan', '{"bahasa":"id"}'); });
   const errors = [];
+  const page = await tab(ctx, errors);
+  if (!polos) {
+    await page.click('#gerbang [data-g=owner]');
+    await page.click('[data-act=tanpa-akun]');
+    await page.waitForSelector('nav.tabs');
+  }
+  return { ctx, page, errors };
+}
+
+// Tab baru di perangkat yang sama, seperti membuka aplikasi lagi setelah ditutup.
+async function tab(ctx, errors) {
+  const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e));
   page.on('dialog', (d) => d.accept());
   await page.goto(BASE);
-  return { ctx, page, errors };
+  return page;
 }
 
 (async () => {
@@ -223,7 +237,10 @@ async function device(browser) {
   await l.click('nav >> text=Akun');
   await bukaLipat(l);
   await l.click('text=Keluar');
-  await l.waitForSelector('#formAuth');
+  await l.waitForSelector('#gerbang');
+  assert.ok(norm(await l.textContent('#gerbang')).includes('Anda sudah keluar.'));
+  await l.click('#gerbang [data-g=owner]');
+  await l.click('[data-act=tanpa-akun]');
   await l.click('nav >> text=Produk');
   assert.ok((norm(await l.textContent('main'))).includes('Belum ada produk'));
 
@@ -454,6 +471,7 @@ async function device(browser) {
   await p.click('nav >> text=Laporan');
   await p.click('text=Hari ini');
   assert.ok(norm(await p.textContent('main')).includes('oleh Budi'));
+  assert.ok(norm(await p.textContent('li.belum .tanda-belum')).includes('Bu Ani'));
 
   // 20b. Tagihan belum lunas: kirim lewat WhatsApp, dicicil, lalu lunas.
   assert.ok(norm(await p.textContent('#tagihan')).includes('Bu Ani'));
@@ -470,6 +488,7 @@ async function device(browser) {
   await p.click('#formLunas >> text=QRIS');
   await p.click('#formLunas button.primary');
   assert.equal(await p.locator('#tagihan').count(), 0);
+  assert.equal(await p.locator('li.belum').count(), 0);
   const lunas = await p.evaluate(() => Kelola.store.list('transaksi').find((r) => r.data.staff).data);
   assert.equal(lunas.lunas, true);
   assert.deepEqual(lunas.dibayar.map((b) => [b.jumlah, b.metode]), [[10000, 'tunai'], [12000, 'qris']]);
@@ -505,7 +524,58 @@ async function device(browser) {
   await p.waitForSelector('#formKunci');
   assert.equal(await p.locator('nav.tabs button:visible').count(), 4);
 
-  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors), []);
+  // 23. Layar awal saat aplikasi dibuka lagi: owner wajib kata sandi, kasir langsung terbuka.
+  const p2 = await tab(hp.ctx, hp.errors);
+  await p2.waitForSelector('#gerbang');
+  await p2.click('#gerbang [data-g=owner]');
+  assert.equal(await p2.inputValue('#formGerbang input[name=email]'), USER.email);
+  assert.equal(await p2.locator('[data-act=tanpa-akun]').count(), 0, 'HP dengan akun tidak bisa dibuka tanpa kata sandi');
+  await p2.fill('#formGerbang input[name=password]', 'salah1');
+  await p2.click('#formGerbang button');
+  await p2.waitForSelector('#gerbang .msg.err');
+  assert.equal(norm(await p2.textContent('#gerbang .msg.err')), 'Email atau kata sandi salah.');
+  await p2.fill('#formGerbang input[name=password]', 'rahasia123');
+  await p2.click('#formGerbang button');
+  await p2.waitForSelector('nav.tabs');
+  assert.equal(await p2.textContent('#subjudul .peran'), 'OWNER');
+  assert.equal(await p2.locator('nav.tabs button:visible').count(), 4);
+  await p2.click('nav >> text=Akun');
+  await p2.click('#modeSaatIni >> text=Ganti mode');
+  await p2.click('#gerbang [data-act=pilih-kasir]');
+  await p2.waitForSelector('.tile');
+  assert.equal(await p2.textContent('#subjudul .peran'), 'KASIR');
+  assert.deepEqual(await p2.locator('nav.tabs button:visible').allInnerTexts(), ['Kasir', 'Akun']);
+  await p2.reload();
+  await p2.waitForSelector('.tile');
+  assert.equal(await p2.textContent('#subjudul .peran'), 'KASIR', 'mode tetap setelah muat ulang');
+  await p2.click('nav >> text=Akun');
+  await p2.click('#modeSaatIni >> text=Ganti mode');
+  // Offline: kata sandi dicek dengan catatan di HP ini.
+  await hp.ctx.setOffline(true);
+  await p2.click('#gerbang [data-g=owner]');
+  await p2.fill('#formGerbang input[name=password]', 'rahasia123');
+  await p2.click('#formGerbang button');
+  await p2.waitForSelector('nav.tabs');
+  assert.equal(await p2.textContent('#subjudul .peran'), 'OWNER');
+  await hp.ctx.setOffline(false);
+
+  // 24. HP baru: bahasa bawaan English; Kasir di HP kosong meminta akun staff.
+  const baru = await device(browser, true);
+  const n = baru.page;
+  await n.waitForSelector('#gerbang');
+  const teksAwal = norm(await n.textContent('#gerbang'));
+  assert.ok(teksAwal.includes('Open as') && teksAwal.includes('Cashier / Staff'), teksAwal);
+  await n.click('#gerbang [data-act=pilih-kasir]');
+  await n.waitForSelector('#formGerbang[data-tujuan=kasir]');
+  await n.click('text=Back to choose mode');
+  await n.click('#gerbang >> text=Sign up');
+  await n.fill('#formDaftar input[name=email]', 'baru@contoh.id');
+  await n.fill('#formDaftar input[name=password]', 'rahasia123');
+  await n.fill('#formDaftar input[name=ulang]', 'rahasia124');
+  await n.click('#formDaftar button');
+  assert.equal(norm(await n.textContent('#gerbang .msg.err')), 'The passwords do not match.');
+
+  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors), []);
   await browser.close();
   console.log('E2E OK');
 })().catch((e) => { console.error(e); console.error(log.slice(-15).join('\n')); process.exit(1); });
