@@ -750,7 +750,7 @@
     const garis = [];
     for (let v = 0; v <= atas + 1e-9; v += langkah) {
       garis.push(`<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" class="${v ? 'grid' : 'dasar'}"/>
-        <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v)}</text>`);
+        <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v, setel.bahasa)}</text>`);
     }
     const tiap = Math.ceil(kelompok.length / 6);
     const isi = kelompok.map((k, i) => {
@@ -995,8 +995,8 @@
       <label class="field"><span>${t('Alamat atau nomor WhatsApp (tampil di struk)')}</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="${t('Contoh: Jl. Melati 5 · 0812 3456 7890')}"></label>
       <button class="btn" data-act="simpan-profil">${t('Simpan')}</button></div>`;
     if (cloud.user && cloud.peran === 'owner' && !ui.staff.list && !ui.staff.memuat && !ui.staff.belumSiap) muatStaff();
-    const modeOwner = `<div class="card row" id="modeSaatIni" style="margin-bottom:18px"><div><span class="peran">${t('OWNER')}</span>
-      <span class="small muted">${t('Semua fitur terbuka')}</span></div>
+    const modeOwner = `<div class="card row mode-owner" id="modeSaatIni"><div><span class="peran">${t('OWNER')}</span>
+      <div class="small muted">${t('Semua fitur terbuka')}</div></div>
       <button class="btn kecil" data-act="ganti-mode">${t('Ganti mode')}</button></div>`;
     return [
       modeOwner,

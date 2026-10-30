@@ -54,4 +54,6 @@ test('skala sumbu dan angka ringkas', () => {
   assert.equal(G.ringkas(1500), '1,5rb');
   assert.equal(G.ringkas(2000000), '2jt');
   assert.equal(G.ringkas(800), '800');
+  assert.equal(G.ringkas(1500, 'en'), '1.5k');
+  assert.equal(G.ringkas(2000000, 'en'), '2M');
 });

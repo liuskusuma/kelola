@@ -376,6 +376,9 @@
     body.hanya-kasir nav.tabs { grid-template-columns: repeat(2, 1fr); }
     /* Label peran di bawah judul, dan garis di atas layar saat hanya kasir */
     .peran { display: inline-block; vertical-align: 1px; margin-right: 6px; padding: 1px 8px; border-radius: 999px; background: var(--navy); color: var(--yellow); font-size: 11px; font-weight: 800; letter-spacing: .4px; }
+    .mode-owner { margin-bottom: 18px; }
+    .mode-owner .peran { margin-bottom: 4px; }
+    .mode-owner .btn { flex: 0 0 auto; white-space: nowrap; }
     .peran.terbatas { background: var(--warn); color: var(--bg); }
     body.hanya-kasir header.nav { box-shadow: inset 0 calc(5px + env(safe-area-inset-top)) 0 var(--warn); }
     /* Layar awal: pilih Owner atau Kasir / Staff */
