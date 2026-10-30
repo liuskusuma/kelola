@@ -23,6 +23,7 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Bahasa dan tampilan.** Di tab Akun bisa memilih Bahasa Indonesia atau English, dan tampilan Terang (bawaan), Gelap, atau Ikuti HP. Pilihan ini disimpan per perangkat.
 - **Login + simpan ke cloud.** Masuk dengan email dan kata sandi supaya data tidak hilang dan bisa dibuka di beberapa perangkat.
 - **Akun staff.** Owner membuat kode undangan di tab Akun. Staff daftar dengan email sendiri di HP-nya, lalu memasukkan kode itu. Akun staff hanya bisa membuka Kasir: modal, laba, bahan baku, dan laporan tidak pernah dikirim ke HP staff. Penjualan staff masuk ke laporan owner (dengan tanda "oleh Budi", misalnya) dan memotong stok saat Kelola di HP owner terbuka dan tersambung internet.
+- **Pilih mode saat aplikasi dibuka.** Setiap kali Kelola dibuka, pilih **Owner** atau **Kasir / Staff**. Owner harus memasukkan kata sandi (juga bisa saat offline kalau sebelumnya pernah masuk di HP itu). Ada tombol **Daftar** untuk pengguna baru dan **Lupa kata sandi?**. Kasir langsung membuka layar kasir tanpa modal dan laba; tombol **Ganti mode** ada di menu Akun. Bahasa bawaan English, bisa diganti ke Bahasa Indonesia di layar awal atau Akun.
 - **Mode kasir dengan PIN.** Untuk HP atau tablet kasir yang dipakai bersama: owner mengunci perangkat itu ke kasir dengan PIN. Produk dan Laporan disembunyikan sampai PIN dimasukkan. Ini hanya menyembunyikan tampilan di perangkat itu; untuk staff yang tidak boleh tahu modal sama sekali, pakai akun staff.
 
 ## Cara kerja penyimpanan

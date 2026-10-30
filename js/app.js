@@ -42,6 +42,8 @@
     sampai: '',
     lipat: {}, // bagian Akun yang sedang dibuka
     grafik: null, // data grafik laporan yang sedang tampil, untuk keterangan saat disentuh
+    gerbang: 'pilih', // layar awal: pilih | owner | daftar | lupa | staff
+    gerbangMsg: null,
     authMode: 'masuk',
     authMsg: null,
     authEmail: '',
@@ -70,7 +72,32 @@
   const modeStaff = () => cloud.peran === 'staff' && !!kasirStaff;
   // Mode kasir dengan PIN di HP bersama.
   const modeKunci = () => !!setel.kunci;
-  const hanyaKasir = () => modeStaff() || modeKunci();
+
+  // Mode yang dipilih di layar awal: 'owner' atau 'kasir'. Disimpan di sessionStorage, jadi
+  // ditanya lagi setiap aplikasi ditutup lalu dibuka (muat ulang halaman tidak menghapusnya).
+  const KEY_SESI = 'kelola:mode';
+  const bacaSesi = () => { try { return sessionStorage.getItem(KEY_SESI); } catch (e) { return null; } };
+  let modeSesi = bacaSesi();
+  function setModeSesi(m) {
+    modeSesi = m;
+    try { if (m) sessionStorage.setItem(KEY_SESI, m); else sessionStorage.removeItem(KEY_SESI); } catch (e) { /* abaikan */ }
+  }
+  // Kasir dipilih di HP owner: tampilan sama seperti mode PIN, tanpa PIN.
+  const modeKasirSesi = () => modeSesi === 'kasir' && !modeStaff();
+  const hanyaKasir = () => modeStaff() || modeKunci() || modeKasirSesi();
+  // Layar awal tampil sampai mode dipilih. Tidak untuk HP yang dikunci PIN, akun staff, atau saat reset kata sandi.
+  const perluGerbang = () => !modeSesi && !modeKunci() && cloud.peran !== 'staff' && !cloud.recovering;
+
+  // Hash kata sandi owner terakhir yang berhasil masuk, supaya owner tetap bisa masuk saat offline.
+  const KEY_SANDI = 'kelola:sandi';
+  function bacaSandi() {
+    try { return JSON.parse(localStorage.getItem(KEY_SANDI) || 'null'); } catch (e) { return null; }
+  }
+  async function simpanSandi(email, password) {
+    const garam = S.kodeAcak(12);
+    try { localStorage.setItem(KEY_SANDI, JSON.stringify({ email: email.toLowerCase(), garam, hash: await S.hashPin(password, garam) })); } catch (e) { /* abaikan */ }
+  }
+  const hapusSandi = () => { try { localStorage.removeItem(KEY_SANDI); } catch (e) { /* abaikan */ } };
 
   // ---------- Data ----------
 
@@ -192,6 +219,14 @@
   };
 
   function render() {
+    const gerbang = perluGerbang();
+    document.body.classList.toggle('gerbang', gerbang);
+    if (gerbang) {
+      document.body.classList.remove('hanya-kasir', 'ada-ringkasan');
+      terapkanWarnaUsaha();
+      viewEl.innerHTML = viewGerbang();
+      return;
+    }
     if (hanyaKasir() && (ui.view === 'produk' || ui.view === 'laporan')) ui.view = 'kasir';
     document.querySelectorAll('nav.tabs button').forEach((b) => {
       b.hidden = hanyaKasir() && (b.dataset.go === 'produk' || b.dataset.go === 'laporan');
@@ -202,13 +237,219 @@
     $('nav.tabs').setAttribute('aria-label', t('Menu utama'));
     const [judul, sub] = JUDUL[ui.view];
     $('#judul').textContent = t(judul);
-    $('#subjudul').textContent = usaha().namaUsaha || t(sub);
+    $('#subjudul').innerHTML = labelPeran() + esc(usaha().namaUsaha || t(sub));
     document.body.classList.toggle('hanya-kasir', hanyaKasir());
     terapkanWarnaUsaha();
     renderBadge();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
     viewEl.innerHTML = views[ui.view]();
+  }
+
+  // Label kecil di bawah judul: siapa yang sedang memakai aplikasi.
+  function labelPeran() {
+    if (modeStaff()) return `<span class="peran terbatas">${t('STAFF')}${kasirStaff.nama ? ' · ' + esc(kasirStaff.nama) : ''}</span>`;
+    if (hanyaKasir()) return `<span class="peran terbatas">${t('KASIR')}</span>`;
+    return `<span class="peran">${t('OWNER')}</span>`;
+  }
+
+  // ---------- Layar awal: pilih Owner atau Kasir / Staff ----------
+
+  const IKON_OWNER = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+  const IKON_KASIR = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h4M7 17h2M14 15h3"/></svg>';
+
+  // Belum pernah ada akun di HP ini: boleh dipakai tanpa akun (data hanya di HP ini).
+  // Sesi Supabase yang tersimpan (dibaca langsung, karena cloud.user baru terisi beberapa saat setelah aplikasi dibuka).
+  const adaSesiTersimpan = () => { try { return Object.keys(localStorage).some((k) => /^sb-.*-auth-token$/.test(k)); } catch (e) { return false; } };
+  const tanpaAkunBoleh = () => !cloud.user && !bacaSandi() && !adaSesiTersimpan();
+
+  function viewGerbang() {
+    const u = usaha();
+    const merek = (sub) => `<div class="merek"><img src="${esc(u.logo || 'icons/logo.svg')}" alt="">
+      <h1>${esc(u.namaUsaha || 'Kelola')}</h1><p>${sub}</p></div>`;
+    const kembali = (ke, teks) => `<button type="button" class="kembali" data-act="gerbang" data-g="${ke}">← ${teks}</button>`;
+    const msg = pesan(ui.gerbangMsg);
+    const g = ui.gerbang;
+    let isi;
+    if (g === 'owner' || g === 'staff') {
+      const owner = g === 'owner';
+      const kunciEmail = owner && cloud.user;
+      isi = `${merek(owner ? t('Masuk sebagai Owner') : t('Masuk dengan akun staff'))}
+        <div class="card stack">
+          ${owner ? '' : `<div class="small muted">${t('Minta kode undangan ke owner. Daftar dengan email Anda sendiri, lalu masukkan kodenya di menu Akun.')}</div>`}
+          ${msg}
+          <form id="formGerbang" class="stack" data-tujuan="${owner ? 'owner' : 'kasir'}">
+            <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(kunciEmail ? cloud.user.email : ui.authEmail)}" ${kunciEmail ? 'readonly' : ''}></label>
+            <label class="field"><span>${t('Kata sandi')}</span><input name="password" type="password" autocomplete="current-password" required></label>
+            <button class="btn primary block">${t('Masuk')}</button>
+          </form>
+          <button type="button" class="link" data-act="gerbang" data-g="lupa">${t('Lupa kata sandi?')}</button>
+        </div>
+        ${cloud.user ? '' : `<button type="button" class="btn block" data-act="gerbang" data-g="daftar">${t('Belum punya akun? Daftar')}</button>`}
+        ${owner && tanpaAkunBoleh() ? `<button type="button" class="link tengah" data-act="tanpa-akun">${t('Pakai tanpa akun (data hanya di HP ini)')}</button>` : ''}
+        ${owner ? `<div class="hint">${t('Untuk keamanan, kata sandi diminta lagi setiap kali aplikasi ditutup lalu dibuka.')}</div>` : ''}
+        ${kembali('pilih', t('Kembali pilih mode'))}`;
+    } else if (g === 'daftar') {
+      isi = `${merek(t('Daftar akun baru'))}
+        <div class="card stack">
+          ${msg}
+          <form id="formDaftar" class="stack">
+            <label class="field"><span>${t('Nama usaha (untuk owner)')}</span><input name="usaha" autocomplete="organization" value="${esc(profil().namaUsaha || '')}" placeholder="${t('Contoh: Warung Bu Sari')}"></label>
+            <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(ui.authEmail)}"></label>
+            <label class="field"><span>${t('Kata sandi (min. 6 karakter)')}</span><input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
+            <label class="field"><span>${t('Ulangi kata sandi')}</span><input name="ulang" type="password" minlength="6" autocomplete="new-password" required></label>
+            <button class="btn primary block">${t('Daftar')}</button>
+          </form>
+        </div>
+        <div class="hint">${t('Akun baru menjadi akun Owner. Staff bisa ditambahkan nanti dari menu Akun.')}</div>
+        ${kembali('owner', t('Sudah punya akun? Masuk'))}`;
+    } else if (g === 'lupa') {
+      isi = `${merek(t('Lupa kata sandi'))}
+        <div class="card stack">
+          <div class="small muted">${t('Masukkan email akun Anda. Kami kirim tautan untuk membuat kata sandi baru.')}</div>
+          ${msg}
+          <form id="formLupa" class="stack">
+            <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(cloud.user ? cloud.user.email : ui.authEmail)}"></label>
+            <button class="btn primary block">${t('Kirim tautan reset')}</button>
+          </form>
+        </div>
+        ${kembali('owner', t('Kembali ke Masuk'))}`;
+    } else {
+      isi = `${merek(t('Buka sebagai'))}
+        <button type="button" class="pilih-mode" data-act="gerbang" data-g="owner"><span class="ik">${IKON_OWNER}</span>
+          <span><b>${t('Owner')}</b><span>${t('Semua fitur: produk, laporan, staff, dan pengaturan. Perlu kata sandi.')}</span></span></button>
+        <button type="button" class="pilih-mode kasir" data-act="pilih-kasir"><span class="ik">${IKON_KASIR}</span>
+          <span><b>${t('Kasir / Staff')}</b><span>${t('Langsung buka kasir untuk mencatat penjualan. Modal dan laba tidak tampil.')}</span></span></button>
+        ${msg}
+        <p class="small muted tengah">${t('Pilihan ini muncul setiap kali aplikasi dibuka.')}</p>
+        ${cloud.user ? '' : `<p class="tengah">${t('Baru pakai Kelola?')} <button type="button" class="link" data-act="gerbang" data-g="daftar">${t('Daftar')}</button></p>`}
+        <div class="tengah">${pilihSetel('bahasa', setel.bahasa, [['en', 'English'], ['id', 'Bahasa Indonesia']])}</div>`;
+    }
+    return `<div class="gerbang-isi" id="gerbang">${isi}</div>`;
+  }
+
+  // Pilih Kasir: HP owner (atau yang sudah punya produk) langsung ke kasir; HP kosong masuk dengan akun staff.
+  function pilihKasir() {
+    ui.gerbangMsg = null;
+    if (cloud.user || adaSesiTersimpan() || !cloudReady || store.list('produk').length) {
+      setModeSesi('kasir');
+      ui.view = 'kasir';
+      ui.cart = {};
+      render();
+      return;
+    }
+    ui.gerbang = 'staff';
+    render();
+  }
+
+  function masukMode(m) {
+    setModeSesi(m);
+    ui.gerbang = 'pilih';
+    ui.gerbangMsg = null;
+    ui.view = 'kasir';
+    ui.cart = {};
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  // Ke layar awal lagi (tombol Ganti mode).
+  function gantiMode() {
+    setModeSesi(null);
+    ui.gerbang = 'pilih';
+    ui.gerbangMsg = null;
+    ui.cart = {};
+    ui.trxTerakhir = null;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  // Masuk dari layar awal. Owner yang sudah masuk di HP ini tetap harus memasukkan kata sandi.
+  async function kirimGerbang(f) {
+    const email = f.email.value.trim();
+    const password = f.password.value;
+    const tujuan = f.dataset.tujuan;
+    ui.authEmail = email;
+    ui.gerbangMsg = null;
+    const btn = f.querySelector('button');
+    btn.disabled = true;
+    const salah = () => { ui.gerbangMsg = { type: 'err', text: t('Email atau kata sandi salah.') }; };
+    // Tanpa Supabase (belum diatur), tidak ada akun untuk dicek.
+    if (!cloudReady) { masukMode(tujuan); return; }
+    if (cloud.user && cloud.user.email.toLowerCase() !== email.toLowerCase()) {
+      ui.gerbangMsg = { type: 'err', text: t('HP ini sedang masuk dengan {email}. Pakai email itu, atau keluar dulu dari menu Akun.', { email: cloud.user.email }) };
+      btn.disabled = false;
+      render();
+      return;
+    }
+    const cocokLokal = async () => {
+      const k = bacaSandi();
+      return !!(cloud.user && k && k.email === email.toLowerCase() && (await S.hashPin(password, k.garam)) === k.hash);
+    };
+    try {
+      if (!navigator.onLine && cloud.user) {
+        if (await cocokLokal()) { masukMode(tujuan); return; }
+        salah();
+      } else {
+        const { error } = await cloud.client.auth.signInWithPassword({ email, password });
+        if (!error) {
+          await simpanSandi(email, password);
+          masukMode(tujuan);
+          return;
+        }
+        if (/fetch|network/i.test(error.message) && (await cocokLokal())) { masukMode(tujuan); return; }
+        ui.gerbangMsg = { type: 'err', text: pesanAuth(error) };
+      }
+    } catch (err) {
+      if (await cocokLokal()) { masukMode(tujuan); return; }
+      ui.gerbangMsg = { type: 'err', text: pesanAuth(err) };
+    }
+    btn.disabled = false;
+    render();
+  }
+
+  async function kirimDaftar(f) {
+    const email = f.email.value.trim();
+    ui.authEmail = email;
+    if (f.password.value !== f.ulang.value) {
+      ui.gerbangMsg = { type: 'err', text: t('Kata sandi dan ulangannya tidak sama.') };
+      render();
+      return;
+    }
+    const namaUsaha = f.usaha.value.trim();
+    const btn = f.querySelector('button');
+    btn.disabled = true;
+    try {
+      const { data, error } = await cloud.client.auth.signUp({ email, password: f.password.value, options: { emailRedirectTo: location.origin + location.pathname } });
+      if (error) throw error;
+      if (namaUsaha) change(() => store.put('profil', Object.assign({}, profil(), { namaUsaha }), 'profil'));
+      if (data.session) {
+        await simpanSandi(email, f.password.value);
+        masukMode('owner');
+        return;
+      }
+      ui.gerbang = 'owner';
+      ui.gerbangMsg = { type: 'ok', text: t('Hampir selesai. Kami mengirim email konfirmasi ke {email}. Klik tautannya, lalu masuk di sini.', { email }) };
+    } catch (err) {
+      ui.gerbangMsg = { type: 'err', text: pesanAuth(err) };
+    }
+    btn.disabled = false;
+    render();
+  }
+
+  async function kirimLupa(f) {
+    const email = f.email.value.trim();
+    ui.authEmail = email;
+    const btn = f.querySelector('button');
+    btn.disabled = true;
+    try {
+      const { error } = await cloud.client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      if (error) throw error;
+      ui.gerbangMsg = { type: 'ok', text: t('Tautan untuk membuat kata sandi baru sudah dikirim ke {email}. Cek juga folder spam.', { email }) };
+    } catch (err) {
+      ui.gerbangMsg = { type: 'err', text: pesanAuth(err) };
+    }
+    btn.disabled = false;
+    render();
   }
 
   function renderBadge() {
@@ -737,16 +978,28 @@
       </form></div>`;
   }
 
+  // Kasir yang dipilih di layar awal: hanya pengaturan dan tombol ganti mode.
+  function viewAkunKasir() {
+    return `<div class="group-title">${t('Mode kasir')}</div><div class="card stack" id="modeSaatIni">
+      <div>${t('Aplikasi sedang dipakai sebagai kasir. Modal, laba, produk, dan laporan disembunyikan.')}</div>
+      <button class="btn primary block" data-act="ganti-mode">${t('Ganti mode')}</button></div>${viewPengaturan()}`;
+  }
+
   function viewAkun() {
     if (modeKunci()) return viewKunci();
     if (modeStaff()) return viewAkunStaff();
+    if (modeKasirSesi()) return viewAkunKasir();
     const p = profil();
     const profilUsaha = `<div class="group-title">${t('Profil usaha')}</div><div class="card stack">
       <label class="field"><span>${t('Nama usaha')}</span><input id="namaUsahaInput" value="${esc(p.namaUsaha)}" placeholder="${t('Contoh: Warung Bu Sari')}"></label>
       <label class="field"><span>${t('Alamat atau nomor WhatsApp (tampil di struk)')}</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="${t('Contoh: Jl. Melati 5 · 0812 3456 7890')}"></label>
       <button class="btn" data-act="simpan-profil">${t('Simpan')}</button></div>`;
     if (cloud.user && cloud.peran === 'owner' && !ui.staff.list && !ui.staff.memuat && !ui.staff.belumSiap) muatStaff();
+    const modeOwner = `<div class="card row" id="modeSaatIni" style="margin-bottom:18px"><div><span class="peran">${t('OWNER')}</span>
+      <span class="small muted">${t('Semua fitur terbuka')}</span></div>
+      <button class="btn kecil" data-act="ganti-mode">${t('Ganti mode')}</button></div>`;
     return [
+      modeOwner,
       jadiLipat('profil', profilUsaha),
       jadiLipat('qris', viewQris()),
       jadiLipat('merek', viewMerek()),
@@ -1545,6 +1798,10 @@
       case 'mode': ui.authMode = el.dataset.m; ui.authMsg = null; render(); break;
       case 'sinkron': syncNow(true); break;
       case 'keluar': keluar(); break;
+      case 'gerbang': ui.gerbang = el.dataset.g; ui.gerbangMsg = null; render(); window.scrollTo(0, 0); break;
+      case 'pilih-kasir': pilihKasir(); break;
+      case 'tanpa-akun': if (tanpaAkunBoleh()) masukMode('owner'); break;
+      case 'ganti-mode': gantiMode(); break;
     }
   });
 
@@ -1662,6 +1919,18 @@
       e.preventDefault();
       await kirimAuth(f);
     }
+    if (f.id === 'formGerbang') {
+      e.preventDefault();
+      await kirimGerbang(f);
+    }
+    if (f.id === 'formDaftar') {
+      e.preventDefault();
+      await kirimDaftar(f);
+    }
+    if (f.id === 'formLupa') {
+      e.preventDefault();
+      await kirimLupa(f);
+    }
     if (f.id === 'formKunci') {
       e.preventDefault();
       const pin = f.pin.value.trim();
@@ -1695,6 +1964,8 @@
       const { error } = await cloud.client.auth.updateUser({ password: f.password.value });
       if (error) { ui.authMsg = { type: 'err', text: pesanAuth(error) }; render(); return; }
       cloud.recovering = false;
+      if (cloud.user) await simpanSandi(cloud.user.email, f.password.value);
+      setModeSesi('owner');
       ui.authMsg = { type: 'ok', text: t('Kata sandi baru tersimpan.') };
       render();
     }
@@ -1725,6 +1996,7 @@
         const { data, error } = await auth.signUp({ email, password: f.password.value, options: { emailRedirectTo: redirect } });
         if (error) throw error;
         if (!data.session) ui.authMsg = { type: 'ok', text: t('Hampir selesai. Kami mengirim email konfirmasi ke {email}. Klik tautannya, lalu masuk di sini.', { email }) };
+        else await simpanSandi(email, f.password.value);
       } else if (ui.authMode === 'lupa') {
         const { error } = await auth.resetPasswordForEmail(email, { redirectTo: redirect });
         if (error) throw error;
@@ -1732,6 +2004,7 @@
       } else {
         const { error } = await auth.signInWithPassword({ email, password: f.password.value });
         if (error) throw error;
+        await simpanSandi(email, f.password.value);
       }
     } catch (err) {
       ui.authMsg = { type: 'err', text: pesanAuth(err) };
@@ -1755,7 +2028,12 @@
     ui.cart = {};
     ui.trxTerakhir = null;
     ui.authMode = 'masuk';
-    ui.authMsg = { type: 'ok', text: t('Anda sudah keluar.') };
+    ui.authMsg = null;
+    hapusSandi();
+    setModeSesi(null);
+    ui.gerbang = 'pilih';
+    ui.gerbangMsg = { type: 'ok', text: t('Anda sudah keluar.') };
+    ui.view = 'kasir';
     render();
   }
 
