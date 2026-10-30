@@ -317,10 +317,6 @@ async function device(browser) {
   await p.click('#grafik summary');
   assert.ok(norm(await p.textContent('#grafik table')).includes('Rp'));
 
-  // 13a2. Sorotan dan penanda naik/turun dibanding kemarin.
-  assert.ok(norm(await p.textContent('#sorotan')).includes('Produk terlaris'));
-  assert.ok(norm(await p.textContent('.stat.utama')).includes('vs kemarin'));
-
   // 13b. Laporan dengan tanggal pilihan sendiri.
   const omzetHariIni = await angkaDi('.stat:has-text("Omzet")');
   await p.click('.seg >> text=Tanggal');

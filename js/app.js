@@ -442,30 +442,17 @@
       : '';
     const fmtWaktu = (iso) => new Date(iso).toLocaleString(lokal(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const fmtTanggal = (iso) => new Date(iso).toLocaleDateString(lokal(), { day: 'numeric', month: 'short' });
-    // Naik/turun dibanding periode sebelumnya yang sama panjang.
-    const lalu = G.periodeLalu(ui.periode, from, to, Date.now());
-    const trxLalu = lalu ? store.list('transaksi').filter((r) => { const w = Date.parse(r.data.waktu); return w >= lalu[0] && w < lalu[1]; }) : [];
-    const banding = t({ hari: 'vs kemarin', '7hari': 'vs minggu lalu', bulan: 'vs bulan lalu', pilih: 'vs periode sebelumnya' }[ui.periode] || '');
-    const tren = (kini, dulu) => {
-      const p = lalu && G.perubahan(kini, dulu);
-      if (!p) return '';
-      const teks = p.arah === 'sama' ? `= ${t('sama')}` : `${p.arah === 'naik' ? '▲' : '▼'} ${p.persen === null ? t(p.arah) : p.persen + '%'}`;
-      return `<div class="tren ${p.arah}">${teks} <span>${banding}</span></div>`;
-    };
-    const jumlah = (daftar, f) => daftar.reduce((s, r) => s + f(r.data), 0);
-    const grafik = viewGrafik(trx, from, to);
     return `<div class="group-title">${t('Periode')}</div><div class="seg periode">${seg}</div>${pilihTanggal}
       <div class="stats">
-        <div class="stat utama"><div class="lbl">${t('Omzet')}</div><div class="value">${rp(omzet)}</div>${tren(omzet, jumlah(trxLalu, (d) => d.total))}</div>
-        <div class="stat"><div class="lbl">${t('Laba kotor')}</div><div class="value">${rp(laba)}</div>${tren(laba, jumlah(trxLalu, (d) => d.laba))}</div>
+        <div class="stat utama"><div class="lbl">${t('Omzet')}</div><div class="value">${rp(omzet)}</div></div>
+        <div class="stat"><div class="lbl">${t('Laba kotor')}</div><div class="value">${rp(laba)}</div></div>
         <div class="stat" id="statPengeluaran"><div class="lbl">${t('Pengeluaran')}</div><div class="value">${rp(biaya)}</div></div>
         <div class="stat" id="labaBersih"><div class="lbl">${t('Laba bersih')}</div><div class="value ${bersih < 0 ? 'err' : ''}">${rp(bersih)}</div></div>
-        <div class="stat"><div class="lbl">${t('Transaksi')}</div><div class="value">${trx.length}</div>${tren(trx.length, trxLalu.length)}</div>
+        <div class="stat"><div class="lbl">${t('Transaksi')}</div><div class="value">${trx.length}</div></div>
         <div class="stat"><div class="lbl">${t('Margin rata-rata')}</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
       </div>
       <div class="foot">${t('Laba kotor = omzet dikurangi modal barang yang terjual. Laba bersih = laba kotor dikurangi pengeluaran.')}</div>
-      ${viewSorotan(trx, top)}
-      ${grafik}
+      ${viewGrafik(trx, from, to)}
       ${viewTagihan()}
       <div class="group-title">${t('Produk terlaris')}</div>
       <div class="card">${top.length
@@ -486,27 +473,6 @@
         : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
   }
 
-  // Sorotan: waktu dengan omzet tertinggi, produk terlaris, dan jam paling ramai. Dipanggil setelah viewGrafik (memakai ui.grafik).
-  function viewSorotan(trx, top) {
-    if (!trx.length) return '';
-    const isi = [];
-    const ramai = ui.grafik.filter((k) => k.n).sort((a, b) => b.omzet - a.omzet)[0];
-    if (ramai && ui.grafik.length > 1) {
-      const judul = t({ jam: 'Jam terlaris', hari: 'Hari terlaris', bulan: 'Bulan terlaris' }[ui.grafikSatuan]);
-      isi.push([judul, esc(ramai.label), rp(ramai.omzet)]);
-    }
-    if (top.length) isi.push([t('Produk terlaris'), esc(top[0][0]), t('{n} terjual', { n: angka.format(top[0][1].qty) })]);
-    const jam = G.jamRamai(trx.map((r) => r.data));
-    if (jam && ui.grafikSatuan !== 'jam') {
-      const dua = (n) => String(n).padStart(2, '0');
-      isi.push([t('Jam paling ramai'), `${dua(jam.jam)}.00–${dua(jam.jam + 1)}.00`, t('{n} transaksi', { n: angka.format(jam.n) })]);
-    }
-    if (!isi.length) return '';
-    return `<div class="group-title">${t('Sorotan')}</div>
-      <div class="card sorotan" id="sorotan">${isi.map(([lbl, nilai, ket]) => `<div class="sorot"><div class="lbl">${lbl}</div>
-        <div class="nilai">${nilai}</div><div class="ket">${ket}</div></div>`).join('')}</div>`;
-  }
-
   // Grafik batang omzet dan laba kotor per jam/hari/bulan, digambar sebagai SVG.
   function viewGrafik(trx, from, to) {
     const { satuan, kelompok } = G.kelompokkan(trx.map((r) => r.data), from, to, Date.now());
@@ -517,7 +483,6 @@
       return d.toLocaleDateString(lokal(), { month: panjang ? 'long' : 'short', year: panjang || d.getMonth() === 0 ? 'numeric' : undefined });
     };
     ui.grafik = kelompok.map((k) => Object.assign({ label: label(k.mulai, true) }, k));
-    ui.grafikSatuan = satuan;
     const judul = t({ jam: 'Omzet & laba per jam', hari: 'Omzet & laba per hari', bulan: 'Omzet & laba per bulan' }[satuan]);
     if (!kelompok.some((k) => k.n)) {
       return `<div class="group-title">${judul}</div><div class="card"><div class="empty">${t('Belum ada penjualan di periode ini.')}</div></div>`;
@@ -547,14 +512,10 @@
         <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v)}</text>`);
     }
     const tiap = Math.ceil(kelompok.length / 6);
-    // Omzet tertinggi diberi angka di atas batangnya supaya langsung terlihat.
-    const puncak = kelompok.length > 1 ? kelompok.reduce((a, k, i) => (k.omzet > kelompok[a].omzet ? i : a), 0) : -1;
     const isi = kelompok.map((k, i) => {
       const x0 = L + i * slot + (slot - (bw * 2 + 2)) / 2;
       const teks = i % tiap === 0 ? `<text x="${L + i * slot + slot / 2}" y="${Ht - 6}" text-anchor="middle">${esc(label(k.mulai))}</text>` : '';
-      const xp = Math.min(Math.max(x0 + bw / 2, L + 14), Wd - R - 14);
-      const atasnya = i === puncak ? `<text class="puncak" x="${xp}" y="${y(k.omzet) - 5}" text-anchor="middle">${G.ringkas(k.omzet)}</text>` : '';
-      return `${batang(x0, k.omzet, 'omzet')}${batang(x0 + bw + 2, k.laba, 'laba')}${teks}${atasnya}
+      return `${batang(x0, k.omzet, 'omzet')}${batang(x0 + bw + 2, k.laba, 'laba')}${teks}
         <rect class="sentuh" data-gi="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${h}"/>`;
     }).join('');
     const baris = ui.grafik.filter((k) => k.n).map((k) => `<tr><td>${esc(k.label)}</td><td>${rp(k.omzet)}</td><td>${rp(k.laba)}</td></tr>`).join('');
