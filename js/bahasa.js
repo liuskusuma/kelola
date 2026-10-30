@@ -368,6 +368,13 @@
     'Sudah dibayar, simpan': 'Paid, save',
     'Simpan sebagai tagihan': 'Save as unpaid',
     'Tagihan {total} tersimpan': 'Unpaid sale of {total} saved',
+    // Grafik laporan
+    'Omzet & laba per jam': 'Sales & profit by hour',
+    'Omzet & laba per hari': 'Sales & profit by day',
+    'Omzet & laba per bulan': 'Sales & profit by month',
+    'Lihat sebagai tabel': 'View as table',
+    'Waktu': 'Time',
+    '{n} transaksi': '{n} transactions',
   };
 
   const KAMUS = { en: EN };

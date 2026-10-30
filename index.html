@@ -43,6 +43,8 @@
       --ok: #12805c;
       --warn: #a65d00;
       --danger: #c8372d;
+      --grafik-1: #3159c8;
+      --grafik-2: #d99a00;
       --f: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
       --f-display: "Exo 2", Bahnschrift, "Segoe UI", system-ui, sans-serif;
       --raised: 9px 9px 20px var(--raise-d), -9px -9px 20px var(--raise-l);
@@ -69,6 +71,8 @@
       --ok: #5fd6a4;
       --warn: #fbc02d;
       --danger: #ff8a7a;
+      --grafik-1: #6385ec;
+      --grafik-2: #b08200;
       color-scheme: dark;
     }
     @media (prefers-color-scheme: dark) {
@@ -88,6 +92,8 @@
         --ok: #5fd6a4;
         --warn: #fbc02d;
         --danger: #ff8a7a;
+        --grafik-1: #6385ec;
+        --grafik-2: #b08200;
         color-scheme: dark;
       }
     }
@@ -239,6 +245,26 @@
     .swatch.bawaan { background: linear-gradient(135deg, #0a2a6e 50%, #fecb10 50%); }
     .swatch[aria-pressed="true"] { outline: 3px solid var(--fg); outline-offset: 2px; }
     .logo-pratinjau { width: 64px; height: 64px; border-radius: 14px; object-fit: contain; background: #fff; box-shadow: var(--raised-sm); flex: 0 0 auto; }
+    .grafik { padding-top: 14px; }
+    .grafik .legenda { display: flex; gap: 16px; color: var(--muted); margin: 0 0 6px 4px; }
+    .grafik i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    .grafik i.omzet, .grafik path.omzet { background: var(--grafik-1); fill: var(--grafik-1); }
+    .grafik i.laba, .grafik path.laba { background: var(--grafik-2); fill: var(--grafik-2); }
+    .grafik .kanvas { position: relative; }
+    .grafik svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .grafik svg text { font-size: 10px; fill: var(--faint); font-variant-numeric: tabular-nums; }
+    .grafik svg line.grid { stroke: var(--sep); stroke-width: 1; }
+    .grafik svg line.dasar { stroke: var(--faint); stroke-width: 1; opacity: .5; }
+    .grafik .sentuh { fill: transparent; cursor: pointer; }
+    .grafik .sentuh.aktif { fill: var(--fg); opacity: .06; }
+    .grafik .tip { position: absolute; top: -6px; transform: translateY(-100%); background: var(--cell); color: var(--fg); box-shadow: var(--raised-sm); border-radius: 12px; padding: 8px 10px; font-size: 13px; line-height: 1.5; pointer-events: none; white-space: nowrap; z-index: 2; }
+    .grafik .tip .muted { color: var(--muted); }
+    .tabel-grafik { margin-top: 8px; }
+    .tabel-grafik summary { cursor: pointer; color: var(--accent-text); font-weight: 600; }
+    .tabel-grafik table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .tabel-grafik th, .tabel-grafik td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--sep); }
+    .tabel-grafik th:first-child, .tabel-grafik td:first-child { text-align: left; }
+    .tabel-grafik th { color: var(--muted); font-weight: 600; }
     .qris-gambar { display: block; width: 100%; max-width: 260px; margin: 0 auto; border-radius: 14px; background: #fff; }
     .qris-gambar.besar { max-width: 420px; }
 
@@ -389,6 +415,7 @@
   <script src="js/store.js"></script>
   <script src="js/hitung.js"></script>
   <script src="js/warna.js"></script>
+  <script src="js/grafik.js"></script>
   <script src="js/penjualan.js"></script>
   <script src="js/staff.js"></script>
   <script src="js/sync.js"></script>

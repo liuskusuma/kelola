@@ -310,6 +310,13 @@ async function device(browser) {
   await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
   assert.ok([...rows.values()].some((r) => r.kind === 'bahan') && [...rows.values()].some((r) => r.kind === 'pengeluaran'));
 
+  // 13a. Grafik omzet dan laba per jam, dengan tabel.
+  assert.ok(norm(await p.textContent('main')).includes('Omzet & laba per jam'));
+  assert.ok(await p.locator('#grafik path.omzet').count() > 0);
+  await p.click('#grafik rect.sentuh >> nth=-1', { force: true }).catch(() => {});
+  await p.click('#grafik summary');
+  assert.ok(norm(await p.textContent('#grafik table')).includes('Rp'));
+
   // 13b. Laporan dengan tanggal pilihan sendiri.
   const omzetHariIni = await angkaDi('.stat:has-text("Omzet")');
   await p.click('.seg >> text=Tanggal');

@@ -108,6 +108,7 @@
         '--sep': `rgba(${r}, ${g}, ${b}, .1)`,
         '--primary': utama, '--on-primary': '#ffffff', '--accent-text': utama,
         '--tanda': utama,
+        '--grafik-1': hsl(h, Math.max(s, 0.45), 0.4), '--grafik-2': hsl(h, Math.max(s, 0.45), 0.68),
       },
       gelap: {
         '--navy': utama, '--yellow': aksen,
@@ -117,6 +118,7 @@
         '--sep': 'rgba(255, 255, 255, .08)',
         '--primary': aksen, '--on-primary': utama, '--accent-text': aksen,
         '--tanda': aksen,
+        '--grafik-1': hsl(h, Math.max(s, 0.45), 0.66), '--grafik-2': hsl(h, Math.max(s, 0.35), 0.42),
       },
     };
   }

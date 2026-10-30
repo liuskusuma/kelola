@@ -5,6 +5,7 @@
   const H = KelolaHitung;
   const P = KelolaPenjualan;
   const W = KelolaWarna;
+  const G = KelolaGrafik;
   const S = KelolaStaff;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
@@ -40,6 +41,7 @@
     dari: '', // periode pilihan sendiri (YYYY-MM-DD)
     sampai: '',
     lipat: {}, // bagian Akun yang sedang dibuka
+    grafik: null, // data grafik laporan yang sedang tampil, untuk keterangan saat disentuh
     authMode: 'masuk',
     authMsg: null,
     authEmail: '',
@@ -450,6 +452,7 @@
         <div class="stat"><div class="lbl">${t('Margin rata-rata')}</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
       </div>
       <div class="foot">${t('Laba kotor = omzet dikurangi modal barang yang terjual. Laba bersih = laba kotor dikurangi pengeluaran.')}</div>
+      ${viewGrafik(trx, from, to)}
       ${viewTagihan()}
       <div class="group-title">${t('Produk terlaris')}</div>
       <div class="card">${top.length
@@ -468,6 +471,78 @@
             <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${r.id}">${t('Struk')}</button>
             <button class="btn kecil danger" data-act="batal-trx" data-id="${r.id}">${t('Batalkan')}</button></div></li>`).join('')}</ul>`
         : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
+  }
+
+  // Grafik batang omzet dan laba kotor per jam/hari/bulan, digambar sebagai SVG.
+  function viewGrafik(trx, from, to) {
+    const { satuan, kelompok } = G.kelompokkan(trx.map((r) => r.data), from, to, Date.now());
+    const label = (w, panjang) => {
+      const d = new Date(w);
+      if (satuan === 'jam') return panjang ? `${String(d.getHours()).padStart(2, '0')}.00–${String(d.getHours() + 1).padStart(2, '0')}.00` : String(d.getHours());
+      if (satuan === 'hari') return d.toLocaleDateString(lokal(), panjang ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short' });
+      return d.toLocaleDateString(lokal(), { month: panjang ? 'long' : 'short', year: panjang || d.getMonth() === 0 ? 'numeric' : undefined });
+    };
+    ui.grafik = kelompok.map((k) => Object.assign({ label: label(k.mulai, true) }, k));
+    const judul = t({ jam: 'Omzet & laba per jam', hari: 'Omzet & laba per hari', bulan: 'Omzet & laba per bulan' }[satuan]);
+    if (!kelompok.some((k) => k.n)) {
+      return `<div class="group-title">${judul}</div><div class="card"><div class="empty">${t('Belum ada penjualan di periode ini.')}</div></div>`;
+    }
+    const L = 40;
+    const R = 6;
+    const T = 10;
+    const B = 22;
+    const Wd = 340;
+    const Ht = 190;
+    const w = Wd - L - R;
+    const h = Ht - T - B;
+    const { atas, langkah } = G.skala(Math.max(...kelompok.map((k) => Math.max(k.omzet, k.laba))));
+    const y = (v) => T + h - (Math.max(0, v) / atas) * h;
+    const slot = w / kelompok.length;
+    const bw = Math.max(1.5, Math.min(14, (slot * 0.72 - 2) / 2));
+    const batang = (x, v, kelas) => {
+      const tinggi = y(0) - y(v);
+      if (tinggi <= 0) return '';
+      const r = Math.min(4, bw / 2, tinggi);
+      const top = y(v);
+      return `<path class="${kelas}" d="M${x},${y(0)}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${y(0)}Z"/>`;
+    };
+    const garis = [];
+    for (let v = 0; v <= atas + 1e-9; v += langkah) {
+      garis.push(`<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" class="${v ? 'grid' : 'dasar'}"/>
+        <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v)}</text>`);
+    }
+    const tiap = Math.ceil(kelompok.length / 6);
+    const isi = kelompok.map((k, i) => {
+      const x0 = L + i * slot + (slot - (bw * 2 + 2)) / 2;
+      const teks = i % tiap === 0 ? `<text x="${L + i * slot + slot / 2}" y="${Ht - 6}" text-anchor="middle">${esc(label(k.mulai))}</text>` : '';
+      return `${batang(x0, k.omzet, 'omzet')}${batang(x0 + bw + 2, k.laba, 'laba')}${teks}
+        <rect class="sentuh" data-gi="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${h}"/>`;
+    }).join('');
+    const baris = ui.grafik.filter((k) => k.n).map((k) => `<tr><td>${esc(k.label)}</td><td>${rp(k.omzet)}</td><td>${rp(k.laba)}</td></tr>`).join('');
+    return `<div class="group-title">${judul}</div>
+      <div class="card grafik" id="grafik">
+        <div class="legenda small"><span><i class="omzet"></i>${t('Omzet')}</span><span><i class="laba"></i>${t('Laba kotor')}</span></div>
+        <div class="kanvas"><svg viewBox="0 0 ${Wd} ${Ht}" role="img" aria-label="${judul}">${garis.join('')}${isi}</svg>
+          <div class="tip" id="grafikTip" hidden></div></div>
+        <details class="tabel-grafik"><summary class="small">${t('Lihat sebagai tabel')}</summary>
+          <table><thead><tr><th>${t('Waktu')}</th><th>${t('Omzet')}</th><th>${t('Laba kotor')}</th></tr></thead><tbody>${baris}</tbody></table></details>
+      </div>`;
+  }
+
+  // Keterangan angka saat batang grafik disentuh atau disorot.
+  function tunjukGrafik(el) {
+    const k = ui.grafik && ui.grafik[+el.dataset.gi];
+    const tip = $('#grafikTip');
+    if (!k || !tip) return;
+    $$('#grafik .sentuh.aktif').forEach((x) => x.classList.remove('aktif'));
+    el.classList.add('aktif');
+    tip.innerHTML = `<b>${esc(k.label)}</b><div><i class="omzet"></i>${t('Omzet')} <b>${rp(k.omzet)}</b></div>
+      <div><i class="laba"></i>${t('Laba kotor')} <b>${rp(k.laba)}</b></div><div class="muted">${t('{n} transaksi', { n: k.n })}</div>`;
+    tip.hidden = false;
+    const kotak = $('#grafik .kanvas').getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const tengah = r.left + r.width / 2 - kotak.left;
+    tip.style.left = Math.max(0, Math.min(kotak.width - tip.offsetWidth, tengah - tip.offsetWidth / 2)) + 'px';
   }
 
   // Tanda cara bayar di riwayat penjualan.
@@ -1339,7 +1414,17 @@
     render();
   }
 
+  document.addEventListener('pointerover', (e) => {
+    const g = e.target.closest && e.target.closest('#grafik [data-gi]');
+    if (g) tunjukGrafik(g);
+  });
+  document.addEventListener('pointerleave', (e) => {
+    if (e.target.id === 'grafik' && $('#grafikTip')) { $('#grafikTip').hidden = true; $$('#grafik .sentuh.aktif').forEach((x) => x.classList.remove('aktif')); }
+  }, true);
+
   document.addEventListener('click', (e) => {
+    const g = e.target.closest('#grafik [data-gi]');
+    if (g) { tunjukGrafik(g); return; }
     const go = e.target.closest('[data-go]');
     if (go) {
       ui.view = go.dataset.go;

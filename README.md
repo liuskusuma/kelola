@@ -13,6 +13,7 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Kasir.** Ketuk produk untuk menambah ke keranjang, isi uang diterima, kembalian dihitung otomatis.
 - **Struk untuk WhatsApp.** Setiap penjualan bisa dibuatkan struk bergambar untuk dikirim lewat WhatsApp, disimpan sebagai gambar, atau dikirim sebagai teks.
 - **Laporan.** Omzet, laba kotor, pengeluaran, laba bersih, jumlah transaksi, margin rata-rata, produk terlaris, dan riwayat penjualan (hari ini, 7 hari, bulan ini, semua).
+- **Grafik penjualan.** Laporan menampilkan batang Omzet dan Laba kotor per jam (hari ini), per hari (sampai 2 bulan), atau per bulan. Sentuh batang untuk melihat angkanya, atau buka **Lihat sebagai tabel**.
 - **Laporan per tanggal.** Selain Hari ini, 7 hari, Bulan ini, dan Semua, pilih **Tanggal** untuk melihat laporan dari tanggal berapa sampai tanggal berapa saja.
 - **QRIS.** Owner menyimpan gambar QRIS usaha di Akun → Pembayaran QRIS. Di kasir muncul tombol **QRIS** untuk ditunjukkan ke pembeli, juga di HP staff. Hanya owner yang bisa mengganti gambarnya.
 - **Bayar nanti dan tagihan WhatsApp.** Di kasir pilih cara bayar: Tunai, QRIS, atau Bayar nanti (isi nama dan nomor WA pembeli). Penjualan yang belum lunas muncul di Laporan → **Belum lunas**. Tombol **Tagih via WA** membuka WhatsApp dengan pesan tagihan yang sudah terisi, dan **Catat bayar** mencatat pembayaran (boleh dicicil, tunai atau QRIS) sampai lunas.
@@ -63,6 +64,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `js/app.js` | Layar Kasir, Produk, Laporan, Akun, serta login |
 | `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
 | `js/penjualan.js` | Mencatat dan membatalkan penjualan, serta mengolah penjualan dari akun staff |
+| `js/grafik.js` | Mengelompokkan penjualan per jam/hari/bulan untuk grafik Laporan |
 | `js/warna.js` | Mengambil warna dari logo dan membuat warna tampilan terang/gelap |
 | `js/staff.js` | Undangan staff, data kasir di HP staff, dan PIN mode kasir |
 | `js/bahasa.js` | Terjemahan Inggris dan pengaturan bahasa/tampilan per perangkat |
