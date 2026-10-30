@@ -67,12 +67,13 @@
     return { atas: Math.ceil(maks / langkah) * langkah, langkah };
   }
 
-  // Angka pendek untuk sumbu: 1.500 -> "1,5rb", 2.000.000 -> "2jt".
-  function ringkas(n) {
-    const f = (x) => String(Math.round(x * 10) / 10).replace('.', ',');
-    if (Math.abs(n) >= 1e9) return f(n / 1e9) + 'M';
-    if (Math.abs(n) >= 1e6) return f(n / 1e6) + 'jt';
-    if (Math.abs(n) >= 1e3) return f(n / 1e3) + 'rb';
+  // Angka pendek untuk sumbu: 1.500 -> "1,5rb", 2.000.000 -> "2jt". Bahasa 'en': "1.5k", "2M".
+  function ringkas(n, bahasa) {
+    const en = bahasa === 'en';
+    const f = (x) => (en ? String(Math.round(x * 10) / 10) : String(Math.round(x * 10) / 10).replace('.', ','));
+    if (Math.abs(n) >= 1e9) return f(n / 1e9) + (en ? 'B' : 'M');
+    if (Math.abs(n) >= 1e6) return f(n / 1e6) + (en ? 'M' : 'jt');
+    if (Math.abs(n) >= 1e3) return f(n / 1e3) + (en ? 'k' : 'rb');
     return String(Math.round(n));
   }
 

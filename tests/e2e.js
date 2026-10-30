@@ -11,7 +11,8 @@ const rows = new Map();
 let clock = Date.now();
 const USER = { id: '11111111-1111-4111-8111-111111111111', email: 'lius@contoh.id', aud: 'authenticated', role: 'authenticated' };
 const STAFF = { id: '22222222-2222-4222-8222-222222222222', email: 'budi@contoh.id', aud: 'authenticated', role: 'authenticated' };
-const USERS = [USER, STAFF];
+const SARI = { id: '33333333-3333-4333-8333-333333333333', email: 'sari@contoh.id', aud: 'authenticated', role: 'authenticated' };
+const USERS = [USER, STAFF, SARI];
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const jwtUntuk = (u) => b64({ alg: 'HS256', typ: 'JWT' }) + '.' + b64({ sub: u.id, email: u.email, exp: Math.floor(Date.now() / 1000) + 3600, role: 'authenticated', aud: 'authenticated' }) + '.sig';
 // Tabel staff tiruan (lihat supabase/staff.sql).
@@ -22,7 +23,7 @@ const log = [];
 const norm = (s) => s.replace(/\u00a0/g, ' ');
 // Bagian di halaman Akun bisa dibuka-tutup; buka semuanya supaya isiannya bisa diklik.
 const bukaLipat = (page) => page.evaluate(() => {
-  ['profil', 'qris', 'pengaturan', 'cloud', 'staff', 'kunci', 'gabung'].forEach((k) => { Kelola.ui.lipat[k] = true; });
+  ['akunHp', 'profil', 'qris', 'pengaturan', 'cloud', 'staff', 'kunci', 'gabung'].forEach((k) => { Kelola.ui.lipat[k] = true; });
   document.querySelectorAll('details.lipat').forEach((d) => { d.open = true; });
 });
 
@@ -126,7 +127,7 @@ async function mock(route) {
 // Satu "perangkat". Uji ini memakai Bahasa Indonesia (bawaan aplikasi English) dan langsung
 // melewati layar awal sebagai owner tanpa akun, kecuali `polos` (layar awal dibiarkan tampil).
 async function device(browser, polos) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', acceptDownloads: true });
   await ctx.route(SB + '/**', mock);
   await ctx.route(BASE + 'js/config.js', (r) => r.fulfill({ contentType: 'text/javascript', body: `window.KELOLA_CONFIG={supabaseUrl:'${SB}',supabaseAnonKey:'anon'};` }));
   if (!polos) await ctx.addInitScript(() => { if (!localStorage.getItem('kelola:pengaturan')) localStorage.setItem('kelola:pengaturan', '{"bahasa":"id"}'); });
@@ -345,6 +346,17 @@ async function tab(ctx, errors) {
   await p.waitForFunction((n) => +document.querySelector('.stat.utama .value').textContent.replace(/\D/g, '') === n, omzetHariIni);
   await p.click('.seg >> text=Hari ini');
 
+  // 13c. Laporan sebagai file Excel.
+  await p.click('#kirimLaporan');
+  await p.waitForSelector('#kirimLaporanDialog');
+  assert.match(await p.textContent('#namaFileLaporan'), /^Kelola-laporan-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const [unduhan] = await Promise.all([p.waitForEvent('download'), p.click('#simpanLaporan')]);
+  const xlsx = require('fs').readFileSync(await unduhan.path());
+  assert.equal(xlsx.subarray(0, 2).toString(), 'PK');
+  assert.ok(xlsx.includes('xl/media/image1.png'), 'grafik ikut di file');
+  assert.ok(xlsx.includes('Ringkasan') && xlsx.includes('Laba bersih'));
+  await p.click('#kirimLaporanDialog >> text=Tutup');
+
   // 14. Foto produk dari galeri: diperkecil, tampil di kasir, ikut ke cloud.
   const gambar = await p.screenshot({ clip: { x: 0, y: 0, width: 800 / 2, height: 300 } });
   await p.click('nav >> text=Produk');
@@ -558,6 +570,50 @@ async function tab(ctx, errors) {
   await p2.waitForSelector('nav.tabs');
   assert.equal(await p2.textContent('#subjudul .peran'), 'OWNER');
   await hp.ctx.setOffline(false);
+
+  // 25. Ganti akun di HP yang sama: data tiap akun terpisah.
+  // Tab lain di HP yang sama dimuat ulang setiap data berubah; tutup supaya tidak mengganggu.
+  await p.close();
+  await p2.click('nav >> text=Akun');
+  await bukaLipat(p2);
+  assert.ok(norm(await p2.textContent('#akunHp')).includes(USER.email));
+  await p2.click('#akunHp >> text=+ Tambah akun lain');
+  await p2.waitForSelector('#formGantiAkun');
+  await p2.fill('#formGantiAkun input[name=email]', SARI.email);
+  await p2.fill('#formGantiAkun input[name=password]', 'salah1');
+  await p2.click('#formGantiAkun button');
+  await p2.waitForSelector('#gerbang .msg.err');
+  await p2.fill('#formGantiAkun input[name=password]', 'rahasia123');
+  await p2.click('#formGantiAkun button');
+  await p2.waitForSelector('nav.tabs');
+  await p2.click('nav >> text=Produk');
+  await p2.waitForSelector('text=Belum ada produk');
+  await p2.click('nav >> text=Akun');
+  await bukaLipat(p2);
+  await p2.fill('#namaUsahaInput', 'Kedai Sari');
+  await p2.click('[data-act=simpan-profil]');
+  await p2.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
+  const profilSari = [...rows.values()].find((r) => r.kind === 'profil' && r.user_id === SARI.id);
+  assert.equal(profilSari && profilSari.data.namaUsaha, 'Kedai Sari');
+  assert.ok(![...rows.values()].some((r) => r.user_id === SARI.id && r.kind === 'produk'), 'produk akun lain tidak ikut');
+  // Kembali ke akun pertama: produknya muncul lagi.
+  assert.ok(norm(await p2.textContent('#akunHp')).includes('Kedai Sari'));
+  await p2.click(`#akunHp li:has-text("${USER.email}") >> text=Pindah`);
+  await p2.waitForSelector('#formGantiAkun');
+  assert.equal(await p2.inputValue('#formGantiAkun input[name=email]'), USER.email);
+  await p2.fill('#formGantiAkun input[name=password]', 'rahasia123');
+  await p2.click('#formGantiAkun button');
+  await p2.waitForSelector('nav.tabs');
+  await p2.click('nav >> text=Produk');
+  await p2.waitForSelector('text=Keripik pedas');
+  // Layar awal menampilkan akun aktif dan daftar akun.
+  await p2.close();
+  const p3 = await tab(hp.ctx, hp.errors);
+  await p3.waitForSelector('#akunChip');
+  assert.ok(norm(await p3.textContent('#akunChip')).includes(USER.email));
+  await p3.click('#akunChip >> text=Ganti akun');
+  const daftar = norm(await p3.textContent('.akun-pilih'));
+  assert.ok(daftar.includes('Kedai Sari') && daftar.includes(USER.email), daftar);
 
   // 24. HP baru: bahasa bawaan English; Kasir di HP kosong meminta akun staff.
   const baru = await device(browser, true);

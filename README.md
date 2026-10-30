@@ -15,6 +15,7 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Laporan.** Omzet, laba kotor, pengeluaran, laba bersih, jumlah transaksi, margin rata-rata, produk terlaris, dan riwayat penjualan (hari ini, 7 hari, bulan ini, semua).
 - **Grafik penjualan.** Laporan menampilkan batang Omzet dan Laba kotor per jam (hari ini), per hari (sampai 2 bulan), atau per bulan. Sentuh batang untuk melihat angkanya, atau buka **Lihat sebagai tabel**.
 - **Laporan per tanggal.** Selain Hari ini, 7 hari, Bulan ini, dan Semua, pilih **Tanggal** untuk melihat laporan dari tanggal berapa sampai tanggal berapa saja.
+- **Kirim laporan sebagai file Excel.** Di Laporan, tombol **Kirim laporan (Excel)** membuat file .xlsx untuk periode yang dipilih: Ringkasan (dengan gambar grafik), semua penjualan (yang belum lunas diberi warna), pengeluaran, penjualan per hari, dan produk terlaris. File dibuat langsung di HP, lalu bisa dibagikan ke Gmail atau WhatsApp, atau disimpan di HP. Kirim otomatis ke email belum ada (butuh layanan email dan fungsi di Supabase).
 - **QRIS.** Owner menyimpan gambar QRIS usaha di Akun → Pembayaran QRIS. Di kasir muncul tombol **QRIS** untuk ditunjukkan ke pembeli, juga di HP staff. Hanya owner yang bisa mengganti gambarnya.
 - **Bayar nanti dan tagihan WhatsApp.** Di kasir pilih cara bayar: Tunai, QRIS, atau Bayar nanti (isi nama dan nomor WA pembeli). Penjualan yang belum lunas muncul di Laporan → **Belum lunas**. Tombol **Tagih via WA** membuka WhatsApp dengan pesan tagihan yang sudah terisi, dan **Catat bayar** mencatat pembayaran (boleh dicicil, tunai atau QRIS) sampai lunas. Di **Riwayat penjualan**, penjualan yang belum lunas diberi latar berwarna dan label **BELUM LUNAS** beserta nama pembeli dan sisa tagihannya.
 - **Logo dan warna usaha.** Owner bisa mengganti logo di pojok kiri atas dan memilih warna aplikasi dari warna-warna logonya (Akun → Logo & warna usaha). Berlaku juga di HP staff dan di gambar struk.
@@ -33,6 +34,7 @@ Kelola menyimpan semua data di perangkat dulu, jadi tetap bisa dipakai tanpa int
 - Saat aplikasi dibuka, saat kembali online, saat aplikasi dibuka lagi dari latar belakang, setiap 60 detik, dan sekitar 1,5 detik setelah ada perubahan.
 - Kalau satu catatan diubah di dua perangkat, **perubahan paling baru yang menang**. Versi lama dari HP yang lama offline tidak akan menimpa versi yang lebih baru (dijaga juga oleh trigger di database).
 - Data yang dibuat sebelum login ikut tersimpan ke akun saat pertama kali login.
+- **Ganti akun.** Satu HP bisa dipakai untuk beberapa akun (misalnya dua usaha). Pilih **Ganti akun** di layar awal, atau **Akun di HP ini** di menu Akun. Data tiap akun disimpan terpisah di HP, termasuk perubahan yang belum terkirim, dan pindah akun selalu meminta kata sandi akun tujuan.
 - Saat keluar, data di perangkat itu dihapus (tetap aman di cloud). Kalau masih ada perubahan yang belum terkirim, Kelola meminta konfirmasi dulu.
 
 ## Mengaktifkan cloud (sekali saja)
@@ -66,6 +68,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
 | `js/penjualan.js` | Mencatat dan membatalkan penjualan, serta mengolah penjualan dari akun staff |
 | `js/grafik.js` | Mengelompokkan penjualan per jam/hari/bulan untuk grafik Laporan |
+| `js/excel.js` | Membuat file Excel laporan (.xlsx) di HP, tanpa server |
 | `js/warna.js` | Mengambil warna dari logo dan membuat warna tampilan terang/gelap |
 | `js/staff.js` | Undangan staff, data kasir di HP staff, dan PIN mode kasir |
 | `js/bahasa.js` | Terjemahan Inggris dan pengaturan bahasa/tampilan per perangkat |

@@ -86,7 +86,39 @@
   const modeKasirSesi = () => modeSesi === 'kasir' && !modeStaff();
   const hanyaKasir = () => modeStaff() || modeKunci() || modeKasirSesi();
   // Layar awal tampil sampai mode dipilih. Tidak untuk HP yang dikunci PIN, akun staff, atau saat reset kata sandi.
-  const perluGerbang = () => !modeSesi && !modeKunci() && cloud.peran !== 'staff' && !cloud.recovering;
+  const perluGerbang = () => ui.gantiAkun || (!modeSesi && !modeKunci() && cloud.peran !== 'staff' && !cloud.recovering);
+
+  // Akun yang pernah masuk di HP ini (untuk Ganti akun). Data tiap akun disimpan terpisah oleh store.claim().
+  const KEY_AKUN = 'kelola:akun';
+  function daftarAkun() {
+    try { return JSON.parse(localStorage.getItem(KEY_AKUN) || '[]'); } catch (e) { return []; }
+  }
+  function simpanDaftarAkun(list) {
+    try { localStorage.setItem(KEY_AKUN, JSON.stringify(list)); } catch (e) { /* abaikan */ }
+  }
+  function catatAkunIni() {
+    if (!cloud.user || !cloud.peran) return;
+    const a = {
+      id: cloud.user.id,
+      email: cloud.user.email,
+      nama: (modeStaff() ? (kasirStaff.usaha || {}).namaUsaha : profil().namaUsaha) || '',
+      staff: modeStaff(),
+    };
+    const list = daftarAkun();
+    const i = list.findIndex((x) => x.id === a.id);
+    if (i >= 0 && JSON.stringify(list[i]) === JSON.stringify(a)) return;
+    if (i >= 0) list[i] = a;
+    else list.push(a);
+    simpanDaftarAkun(list);
+  }
+  // Hapus akun dari HP ini: data yang tersimpan untuk akun itu ikut dihapus (data di cloud tetap aman).
+  function lupakanAkun(id) {
+    simpanDaftarAkun(daftarAkun().filter((a) => a.id !== id));
+    try {
+      localStorage.removeItem(KelolaStore.arsipKey(id));
+      if (S.bacaKasir(window.localStorage, id).ownerId) S.hapusKasir(window.localStorage);
+    } catch (e) { /* abaikan */ }
+  }
 
   // Hash kata sandi owner terakhir yang berhasil masuk, supaya owner tetap bisa masuk saat offline.
   const KEY_SANDI = 'kelola:sandi';
@@ -219,6 +251,7 @@
   };
 
   function render() {
+    catatAkunIni();
     const gerbang = perluGerbang();
     document.body.classList.toggle('gerbang', gerbang);
     if (gerbang) {
@@ -261,7 +294,7 @@
   // Belum pernah ada akun di HP ini: boleh dipakai tanpa akun (data hanya di HP ini).
   // Sesi Supabase yang tersimpan (dibaca langsung, karena cloud.user baru terisi beberapa saat setelah aplikasi dibuka).
   const adaSesiTersimpan = () => { try { return Object.keys(localStorage).some((k) => /^sb-.*-auth-token$/.test(k)); } catch (e) { return false; } };
-  const tanpaAkunBoleh = () => !cloud.user && !bacaSandi() && !adaSesiTersimpan();
+  const tanpaAkunBoleh = () => !cloud.user && !bacaSandi() && !adaSesiTersimpan() && !daftarAkun().length;
 
   function viewGerbang() {
     const u = usaha();
@@ -270,8 +303,37 @@
     const kembali = (ke, teks) => `<button type="button" class="kembali" data-act="gerbang" data-g="${ke}">← ${teks}</button>`;
     const msg = pesan(ui.gerbangMsg);
     const g = ui.gerbang;
+    const akun = daftarAkun();
+    const aktif = (a) => cloud.user && a.id === cloud.user.id;
+    const ketAkun = (a) => `${esc(a.email)}${a.staff ? ' · ' + t('Staff') : ''}`;
+    const kembaliAkun = ui.gantiAkun
+      ? `<button type="button" class="kembali" data-act="batal-ganti-akun">← ${t('Kembali ke aplikasi')}</button>`
+      : kembali('pilih', t('Kembali pilih mode'));
     let isi;
-    if (g === 'owner' || g === 'staff') {
+    if (g === 'akun') {
+      isi = `${merek(t('Ganti akun'))}
+        <div class="card stack">
+          <ul class="list akun-pilih">${akun.map((a) => `<li><button type="button" class="pilih-akun" data-act="pilih-akun" data-email="${esc(a.email)}">
+            <span class="t"><b>${esc(a.nama || a.email)}</b><span class="small muted">${ketAkun(a)}</span></span>
+            ${aktif(a) ? `<span class="aktif small">● ${t('Aktif')}</span>` : '<span class="muted" aria-hidden="true">›</span>'}</button></li>`).join('')}</ul>
+          <button type="button" class="btn block" data-act="gerbang" data-g="masuk-akun" data-email="">${t('+ Tambah akun lain')}</button>
+        </div>
+        <div class="hint">${t('Data tiap akun (produk, penjualan, laporan) disimpan terpisah di HP ini. Pindah akun meminta kata sandi akun itu.')}</div>
+        ${kembaliAkun}`;
+    } else if (g === 'masuk-akun') {
+      isi = `${merek(t('Masuk ke akun lain'))}
+        <div class="card stack">
+          ${msg}
+          <form id="formGantiAkun" class="stack">
+            <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(ui.authEmail)}"></label>
+            <label class="field"><span>${t('Kata sandi')}</span><input name="password" type="password" autocomplete="current-password" required></label>
+            <button class="btn primary block">${t('Masuk')}</button>
+          </form>
+          <button type="button" class="link" data-act="gerbang" data-g="lupa">${t('Lupa kata sandi?')}</button>
+        </div>
+        <button type="button" class="btn block" data-act="gerbang" data-g="daftar">${t('Belum punya akun? Daftar')}</button>
+        ${akun.length ? kembali('akun', t('Kembali ke daftar akun')) : kembaliAkun}`;
+    } else if (g === 'owner' || g === 'staff') {
       const owner = g === 'owner';
       const kunciEmail = owner && cloud.user;
       isi = `${merek(owner ? t('Masuk sebagai Owner') : t('Masuk dengan akun staff'))}
@@ -294,7 +356,7 @@
         <div class="card stack">
           ${msg}
           <form id="formDaftar" class="stack">
-            <label class="field"><span>${t('Nama usaha (untuk owner)')}</span><input name="usaha" autocomplete="organization" value="${esc(profil().namaUsaha || '')}" placeholder="${t('Contoh: Warung Bu Sari')}"></label>
+            <label class="field"><span>${t('Nama usaha (untuk owner)')}</span><input name="usaha" autocomplete="organization" value="${esc(cloud.user ? '' : profil().namaUsaha || '')}" placeholder="${t('Contoh: Warung Bu Sari')}"></label>
             <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(ui.authEmail)}"></label>
             <label class="field"><span>${t('Kata sandi (min. 6 karakter)')}</span><input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
             <label class="field"><span>${t('Ulangi kata sandi')}</span><input name="ulang" type="password" minlength="6" autocomplete="new-password" required></label>
@@ -302,20 +364,25 @@
           </form>
         </div>
         <div class="hint">${t('Akun baru menjadi akun Owner. Staff bisa ditambahkan nanti dari menu Akun.')}</div>
-        ${kembali('owner', t('Sudah punya akun? Masuk'))}`;
+        ${kembali(ui.gerbangAsal === 'masuk-akun' ? 'masuk-akun' : 'owner', t('Sudah punya akun? Masuk'))}`;
     } else if (g === 'lupa') {
       isi = `${merek(t('Lupa kata sandi'))}
         <div class="card stack">
           <div class="small muted">${t('Masukkan email akun Anda. Kami kirim tautan untuk membuat kata sandi baru.')}</div>
           ${msg}
           <form id="formLupa" class="stack">
-            <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(cloud.user ? cloud.user.email : ui.authEmail)}"></label>
+            <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(cloud.user && ui.gerbangAsal !== 'masuk-akun' ? cloud.user.email : ui.authEmail)}"></label>
             <button class="btn primary block">${t('Kirim tautan reset')}</button>
           </form>
         </div>
-        ${kembali('owner', t('Kembali ke Masuk'))}`;
+        ${kembali(ui.gerbangAsal === 'masuk-akun' ? 'masuk-akun' : 'owner', t('Kembali ke Masuk'))}`;
     } else {
-      isi = `${merek(t('Buka sebagai'))}
+      const ini = cloud.user && akun.find(aktif);
+      const chip = cloud.user
+        ? `<div class="akun-chip" id="akunChip"><div class="t"><b>${esc((ini && ini.nama) || cloud.user.email)}</b><span class="small muted">${esc(cloud.user.email)}</span></div>
+            <button type="button" class="btn kecil" data-act="gerbang" data-g="akun">${t('Ganti akun')}</button></div>`
+        : akun.length ? `<button type="button" class="link tengah" data-act="gerbang" data-g="akun">${t('Pilih akun yang pernah masuk di HP ini')}</button>` : '';
+      isi = `${merek(t('Buka sebagai'))}${chip}
         <button type="button" class="pilih-mode" data-act="gerbang" data-g="owner"><span class="ik">${IKON_OWNER}</span>
           <span><b>${t('Owner')}</b><span>${t('Semua fitur: produk, laporan, staff, dan pengaturan. Perlu kata sandi.')}</span></span></button>
         <button type="button" class="pilih-mode kasir" data-act="pilih-kasir"><span class="ik">${IKON_KASIR}</span>
@@ -344,6 +411,7 @@
 
   function masukMode(m) {
     setModeSesi(m);
+    ui.gantiAkun = false;
     ui.gerbang = 'pilih';
     ui.gerbangMsg = null;
     ui.view = 'kasir';
@@ -418,16 +486,21 @@
     const namaUsaha = f.usaha.value.trim();
     const btn = f.querySelector('button');
     btn.disabled = true;
+    // Sudah masuk dengan akun lain: akun baru ini ditambahkan (Ganti akun), data akun lama tidak tercampur.
+    const tambah = !!cloud.user;
     try {
+      if (tambah && navigator.onLine) await syncNow(false);
       const { data, error } = await cloud.client.auth.signUp({ email, password: f.password.value, options: { emailRedirectTo: location.origin + location.pathname } });
       if (error) throw error;
-      if (namaUsaha) change(() => store.put('profil', Object.assign({}, profil(), { namaUsaha }), 'profil'));
+      if (namaUsaha && tambah) ui.usahaBaru = { id: data.user && data.user.id, nama: namaUsaha };
+      else if (namaUsaha) change(() => store.put('profil', Object.assign({}, profil(), { namaUsaha }), 'profil'));
       if (data.session) {
         await simpanSandi(email, f.password.value);
+        if (tambah) await setUser(data.user);
         masukMode('owner');
         return;
       }
-      ui.gerbang = 'owner';
+      ui.gerbang = tambah ? 'masuk-akun' : 'owner';
       ui.gerbangMsg = { type: 'ok', text: t('Hampir selesai. Kami mengirim email konfirmasi ke {email}. Klik tautannya, lalu masuk di sini.', { email }) };
     } catch (err) {
       ui.gerbangMsg = { type: 'err', text: pesanAuth(err) };
@@ -450,6 +523,39 @@
     }
     btn.disabled = false;
     render();
+  }
+
+  // Ganti akun: kirim dulu perubahan akun yang sedang aktif, lalu masuk ke akun lain.
+  // Data akun sebelumnya tetap tersimpan di HP (store.claim) dan muncul lagi saat akun itu dipilih.
+  async function kirimGantiAkun(f) {
+    const email = f.email.value.trim();
+    const password = f.password.value;
+    ui.authEmail = email;
+    ui.gerbangMsg = null;
+    const btn = f.querySelector('button');
+    btn.disabled = true;
+    const gagal = (text) => {
+      ui.gerbangMsg = { type: 'err', text };
+      btn.disabled = false;
+      render();
+    };
+    if (!cloudReady) { gagal(t('Sinkronisasi cloud belum diaktifkan di aplikasi ini, jadi data hanya tersimpan di perangkat ini.')); return; }
+    if (cloud.user && cloud.user.email.toLowerCase() !== email.toLowerCase()) {
+      if (navigator.onLine) await syncNow(false);
+      if (modeStaff() && kasirStaff.antrian.length) {
+        gagal(t('Masih ada {n} penjualan yang belum terkirim. Sambungkan internet sampai terkirim, lalu coba lagi.', { n: kasirStaff.antrian.length }));
+        return;
+      }
+    }
+    try {
+      const { data, error } = await cloud.client.auth.signInWithPassword({ email, password });
+      if (error) { gagal(pesanAuth(error)); return; }
+      await simpanSandi(email, password);
+      await setUser(data.user);
+      masukMode('owner');
+    } catch (err) {
+      gagal(pesanAuth(err));
+    }
   }
 
   function renderBadge() {
@@ -657,23 +763,32 @@
   // Disimpan dalam Bahasa Indonesia; ditampilkan sesuai bahasa yang dipilih.
   const KATEGORI = ['Sewa tempat', 'Listrik & air', 'Gaji', 'Transportasi', 'Iklan & promosi', 'Peralatan', 'Lainnya'];
 
-  function viewLaporan() {
+  // Data laporan untuk periode yang dipilih (dipakai halaman Laporan dan file Excel).
+  function dataLaporan() {
     const [from, to] = rentangLaporan();
     const dalam = (r) => { const w = Date.parse(r.data.waktu); return w >= from && w < to; };
     const urut = (a, b) => b.data.waktu.localeCompare(a.data.waktu);
     const trx = store.list('transaksi').filter(dalam).sort(urut);
     const keluar = store.list('pengeluaran').filter(dalam).sort(urut);
-    const omzet = trx.reduce((s, r) => s + r.data.total, 0);
-    const laba = trx.reduce((s, r) => s + r.data.laba, 0);
-    const biaya = keluar.reduce((s, r) => s + r.data.jumlah, 0);
-    const bersih = laba - biaya;
     const terjual = {};
     trx.forEach((r) => r.data.items.forEach((i) => {
       terjual[i.nama] = terjual[i.nama] || { qty: 0, omzet: 0 };
       terjual[i.nama].qty += i.qty;
       terjual[i.nama].omzet += i.qty * i.harga;
     }));
-    const top = Object.entries(terjual).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 5);
+    return {
+      from, to, trx, keluar,
+      omzet: trx.reduce((s, r) => s + r.data.total, 0),
+      laba: trx.reduce((s, r) => s + r.data.laba, 0),
+      biaya: keluar.reduce((s, r) => s + r.data.jumlah, 0),
+      terlaris: Object.entries(terjual).sort((a, b) => b[1].omzet - a[1].omzet),
+    };
+  }
+
+  function viewLaporan() {
+    const { from, to, trx, keluar, omzet, laba, biaya, terlaris } = dataLaporan();
+    const bersih = laba - biaya;
+    const top = terlaris.slice(0, 5);
     const seg = [['hari', t('Hari ini')], ['7hari', t('7 hari')], ['bulan', t('Bulan ini')], ['semua', t('Semua')], ['pilih', t('Tanggal')]]
       .map(([k, l]) => `<button data-act="periode" data-p="${k}" aria-pressed="${ui.periode === k}">${l}</button>`).join('');
     const pilihTanggal = ui.periode === 'pilih'
@@ -684,6 +799,8 @@
     const fmtWaktu = (iso) => new Date(iso).toLocaleString(lokal(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const fmtTanggal = (iso) => new Date(iso).toLocaleDateString(lokal(), { day: 'numeric', month: 'short' });
     return `<div class="group-title">${t('Periode')}</div><div class="seg periode">${seg}</div>${pilihTanggal}
+      <div class="row kirim-laporan"><span class="small muted">${esc(teksPeriode(from, to, trx))}</span>
+        <button class="btn kecil primary" data-act="kirim-laporan" id="kirimLaporan">${t('Kirim laporan (Excel)')}</button></div>
       <div class="stats">
         <div class="stat utama"><div class="lbl">${t('Omzet')}</div><div class="value">${rp(omzet)}</div></div>
         <div class="stat"><div class="lbl">${t('Laba kotor')}</div><div class="value">${rp(laba)}</div></div>
@@ -714,15 +831,30 @@
         : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
   }
 
+  function labelGrafik(satuan, w, panjang) {
+    const d = new Date(w);
+    if (satuan === 'jam') return panjang ? `${String(d.getHours()).padStart(2, '0')}.00–${String(d.getHours() + 1).padStart(2, '0')}.00` : String(d.getHours());
+    if (satuan === 'hari') return d.toLocaleDateString(lokal(), panjang ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short' });
+    return d.toLocaleDateString(lokal(), { month: panjang ? 'long' : 'short', year: panjang || d.getMonth() === 0 ? 'numeric' : undefined });
+  }
+
+  // Tanggal awal dan akhir periode laporan (untuk "Semua": dari penjualan pertama).
+  function batasPeriode(from, to, trx) {
+    const awal = from > 0 ? from : trx.length ? Math.min(...trx.map((r) => Date.parse(r.data.waktu))) : Date.now();
+    const akhir = Math.min(to, Date.now() + 1) - 1;
+    return [new Date(awal), new Date(Math.max(awal, akhir))];
+  }
+
+  function teksPeriode(from, to, trx) {
+    const [a, z] = batasPeriode(from, to, trx);
+    const tgl = (d, tahun) => d.toLocaleDateString(lokal(), { day: 'numeric', month: 'short', year: tahun ? 'numeric' : undefined });
+    return tanggalIni(a) === tanggalIni(z) ? tgl(a, true) : `${tgl(a, a.getFullYear() !== z.getFullYear())} – ${tgl(z, true)}`;
+  }
+
   // Grafik batang omzet dan laba kotor per jam/hari/bulan, digambar sebagai SVG.
   function viewGrafik(trx, from, to) {
     const { satuan, kelompok } = G.kelompokkan(trx.map((r) => r.data), from, to, Date.now());
-    const label = (w, panjang) => {
-      const d = new Date(w);
-      if (satuan === 'jam') return panjang ? `${String(d.getHours()).padStart(2, '0')}.00–${String(d.getHours() + 1).padStart(2, '0')}.00` : String(d.getHours());
-      if (satuan === 'hari') return d.toLocaleDateString(lokal(), panjang ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short' });
-      return d.toLocaleDateString(lokal(), { month: panjang ? 'long' : 'short', year: panjang || d.getMonth() === 0 ? 'numeric' : undefined });
-    };
+    const label = (w, panjang) => labelGrafik(satuan, w, panjang);
     ui.grafik = kelompok.map((k) => Object.assign({ label: label(k.mulai, true) }, k));
     const judul = t({ jam: 'Omzet & laba per jam', hari: 'Omzet & laba per hari', bulan: 'Omzet & laba per bulan' }[satuan]);
     if (!kelompok.some((k) => k.n)) {
@@ -750,7 +882,7 @@
     const garis = [];
     for (let v = 0; v <= atas + 1e-9; v += langkah) {
       garis.push(`<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" class="${v ? 'grid' : 'dasar'}"/>
-        <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v)}</text>`);
+        <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v, setel.bahasa)}</text>`);
     }
     const tiap = Math.ceil(kelompok.length / 6);
     const isi = kelompok.map((k, i) => {
@@ -924,7 +1056,7 @@
         <div class="small muted">${pending ? t('{n} penjualan belum terkirim', { n: pending }) : t('semua data sudah terkirim')}</div>
         ${err}
         <div class="row"><button class="btn" data-act="sinkron">${t('Sinkronkan sekarang')}</button>
-        <button class="btn danger" data-act="keluar">${t('Keluar')}</button></div></div>${viewPengaturan()}`;
+        <button class="btn danger" data-act="keluar">${t('Keluar')}</button></div></div>${viewAkunHp()}${viewPengaturan()}`;
   }
 
   // Owner: kunci HP ke kasir dengan PIN.
@@ -995,11 +1127,12 @@
       <label class="field"><span>${t('Alamat atau nomor WhatsApp (tampil di struk)')}</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="${t('Contoh: Jl. Melati 5 · 0812 3456 7890')}"></label>
       <button class="btn" data-act="simpan-profil">${t('Simpan')}</button></div>`;
     if (cloud.user && cloud.peran === 'owner' && !ui.staff.list && !ui.staff.memuat && !ui.staff.belumSiap) muatStaff();
-    const modeOwner = `<div class="card row" id="modeSaatIni" style="margin-bottom:18px"><div><span class="peran">${t('OWNER')}</span>
-      <span class="small muted">${t('Semua fitur terbuka')}</span></div>
+    const modeOwner = `<div class="card row mode-owner" id="modeSaatIni"><div><span class="peran">${t('OWNER')}</span>
+      <div class="small muted">${t('Semua fitur terbuka')}</div></div>
       <button class="btn kecil" data-act="ganti-mode">${t('Ganti mode')}</button></div>`;
     return [
       modeOwner,
+      viewAkunHp() && jadiLipat('akunHp', viewAkunHp()),
       jadiLipat('profil', profilUsaha),
       jadiLipat('qris', viewQris()),
       jadiLipat('merek', viewMerek()),
@@ -1009,6 +1142,22 @@
       jadiLipat('kunci', viewModeKasir(), !!ui.kunciMsg),
       viewGabung() && jadiLipat('gabung', viewGabung(), !!ui.gabungMsg),
     ].filter(Boolean).join('');
+  }
+
+  // Akun yang pernah masuk di HP ini, untuk pindah akun.
+  function viewAkunHp() {
+    if (!cloudReady || !cloud.user) return '';
+    const baris = daftarAkun().map((a) => {
+      const aktif = a.id === cloud.user.id;
+      return `<li class="row akun-hp"><div class="t"><b>${esc(a.nama || a.email)}</b><div class="small muted">${esc(a.email)}${a.staff ? ' · ' + t('Staff') : ''}</div></div>
+        ${aktif ? `<span class="aktif small">● ${t('Aktif')}</span>`
+          : `<div class="aksi"><button class="btn kecil" data-act="ke-ganti-akun" data-email="${esc(a.email)}">${t('Pindah')}</button>
+            <button class="link small danger" data-act="lupakan-akun" data-id="${esc(a.id)}">${t('Hapus dari HP')}</button></div>`}</li>`;
+    }).join('');
+    return `<div class="group-title">${t('Akun di HP ini')}</div><div class="card stack" id="akunHp">
+      <ul class="list">${baris}</ul>
+      <button class="btn block" data-act="ke-ganti-akun" data-email="">${t('+ Tambah akun lain')}</button>
+      <div class="small muted">${t('Data tiap akun (produk, penjualan, laporan) disimpan terpisah di HP ini. Pindah akun meminta kata sandi akun itu.')}</div></div>`;
   }
 
   // Owner: logo di pojok kiri atas dan warna aplikasi dari logo.
@@ -1616,6 +1765,158 @@
     } catch (e) { /* pengguna membatalkan */ }
   }
 
+  // ---------- Laporan Excel ----------
+
+  // Grafik omzet & laba sebagai gambar PNG untuk file Excel (selalu latar putih).
+  async function grafikPng(trx, from, to) {
+    const { satuan, kelompok } = G.kelompokkan(trx.map((r) => r.data), from, to, Date.now());
+    if (!kelompok.some((k) => k.n)) return null;
+    const tm = temaUsaha();
+    const warna1 = tm ? tm.terang['--grafik-1'] : '#3159c8';
+    const warna2 = tm ? tm.terang['--grafik-2'] : '#d99a00';
+    const Wd = 1200;
+    const Ht = 600;
+    const L = 110;
+    const R = 24;
+    const T = 96;
+    const B = 56;
+    const c = document.createElement('canvas');
+    c.width = Wd;
+    c.height = Ht;
+    const ctx = c.getContext('2d');
+    const font = (ukuran, tebal) => `${tebal ? '700 ' : ''}${ukuran}px -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, Wd, Ht);
+    ctx.fillStyle = '#10204a';
+    ctx.font = font(30, true);
+    ctx.fillText(t({ jam: 'Omzet & laba per jam', hari: 'Omzet & laba per hari', bulan: 'Omzet & laba per bulan' }[satuan]), 24, 44);
+    // Legenda
+    ctx.font = font(22);
+    let lx = 24;
+    [[warna1, t('Omzet')], [warna2, t('Laba kotor')]].forEach(([w, teks]) => {
+      ctx.fillStyle = w;
+      ctx.fillRect(lx, 64, 18, 18);
+      ctx.fillStyle = '#3d4866';
+      ctx.fillText(teks, lx + 26, 81);
+      lx += 40 + ctx.measureText(teks).width + 24;
+    });
+    const w = Wd - L - R;
+    const h = Ht - T - B;
+    const { atas, langkah } = G.skala(Math.max(...kelompok.map((k) => Math.max(k.omzet, k.laba))));
+    const y = (v) => T + h - (Math.max(0, v) / atas) * h;
+    ctx.textAlign = 'right';
+    ctx.font = font(20);
+    for (let v = 0; v <= atas + 1e-9; v += langkah) {
+      ctx.strokeStyle = v ? '#e3e8f1' : '#9aa5bd';
+      ctx.lineWidth = v ? 1 : 2;
+      ctx.beginPath();
+      ctx.moveTo(L, Math.round(y(v)) + 0.5);
+      ctx.lineTo(Wd - R, Math.round(y(v)) + 0.5);
+      ctx.stroke();
+      ctx.fillStyle = '#5b6785';
+      ctx.fillText(G.ringkas(v, setel.bahasa), L - 12, y(v) + 7);
+    }
+    const slot = w / kelompok.length;
+    const bw = Math.max(3, Math.min(40, (slot * 0.72 - 4) / 2));
+    const batang = (x, v, warna) => {
+      const tinggi = y(0) - y(v);
+      if (tinggi <= 0) return;
+      const r = Math.min(8, bw / 2, tinggi);
+      const top = y(v);
+      ctx.fillStyle = warna;
+      ctx.beginPath();
+      ctx.moveTo(x, y(0));
+      ctx.lineTo(x, top + r);
+      ctx.quadraticCurveTo(x, top, x + r, top);
+      ctx.lineTo(x + bw - r, top);
+      ctx.quadraticCurveTo(x + bw, top, x + bw, top + r);
+      ctx.lineTo(x + bw, y(0));
+      ctx.closePath();
+      ctx.fill();
+    };
+    const tiap = Math.ceil(kelompok.length / 8);
+    ctx.textAlign = 'center';
+    kelompok.forEach((k, i) => {
+      const x0 = L + i * slot + (slot - (bw * 2 + 4)) / 2;
+      batang(x0, k.omzet, warna1);
+      batang(x0 + bw + 4, k.laba, warna2);
+      if (i % tiap === 0) {
+        ctx.fillStyle = '#5b6785';
+        ctx.fillText(labelGrafik(satuan, k.mulai), L + i * slot + slot / 2, Ht - 20);
+      }
+    });
+    const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+    return blob ? { png: new Uint8Array(await blob.arrayBuffer()), lebar: Wd / 2, tinggi: Ht / 2 } : null;
+  }
+
+  async function buatLaporanExcel() {
+    const d = dataLaporan();
+    const [a, z] = batasPeriode(d.from, d.to, d.trx);
+    const metode = { tunai: t('Tunai'), qris: 'QRIS', nanti: t('Bayar nanti') };
+    const isi = KelolaExcel.laporan({
+      namaUsaha: usaha().namaUsaha || 'Kelola',
+      judul: t('Laporan penjualan, {periode}', { periode: teksPeriode(d.from, d.to, d.trx) }),
+      dibuat: t('Dibuat dengan Kelola, {waktu}', { waktu: new Date().toLocaleString(lokal(), { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }),
+      penjualan: d.trx.map((r) => {
+        const sisa = P.sisaTagihan(r.data);
+        return {
+          waktu: Date.parse(r.data.waktu),
+          barang: r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', ') + (r.data.pelanggan ? ` (${r.data.pelanggan.nama})` : ''),
+          metode: metode[r.data.metode] || metode.tunai,
+          lunas: !(sisa > 0),
+          omzet: r.data.total,
+          laba: r.data.laba,
+          sisa,
+        };
+      }),
+      pengeluaran: d.keluar.map((r) => ({ waktu: Date.parse(r.data.waktu), kategori: t(r.data.kategori), catatan: r.data.catatan || '', jumlah: r.data.jumlah })),
+      terlaris: d.terlaris.map(([nama, v]) => ({ nama, qty: v.qty, omzet: v.omzet })),
+      grafik: await grafikPng(d.trx, d.from, d.to),
+      teks: {
+        ringkasan: t('Ringkasan'), penjualan: t('Penjualan'), pengeluaran: t('Pengeluaran'), perHari: t('Per hari'),
+        terlaris: t('Terlaris'), tanggal: t('Tanggal'), jam: t('Jam'), barang: t('Barang'), caraBayar: t('Cara bayar'),
+        status: t('Status'), omzet: t('Omzet'), labaKotor: t('Laba kotor'), sisa: t('Sisa tagihan'), lunas: t('Lunas'),
+        belumLunas: t('Belum lunas'), tagihan: t('Tagihan belum lunas'), kategori: t('Kategori'), catatan: t('Catatan'), jumlah: t('Jumlah'),
+        transaksi: t('Transaksi'), labaBersih: t('Laba bersih'), margin: t('Margin rata-rata'), produk: t('Produk'),
+        terjual: t('Terjual'), total: t('Total'),
+        catatanLaba: t('Laba kotor = omzet dikurangi modal barang yang terjual.'),
+        catatanBersih: t('Laba bersih = laba kotor dikurangi pengeluaran.'),
+        catatanGrafik: t('Grafik omzet dan laba'),
+      },
+    });
+    const nama = `Kelola-${t('laporan')}-${tanggalIni(a)}_${tanggalIni(z)}.xlsx`;
+    return { nama, blob: new Blob([isi], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), periode: teksPeriode(d.from, d.to, d.trx), n: d.trx.length };
+  }
+
+  async function bukaKirimLaporan() {
+    const f = await buatLaporanExcel();
+    if (ui.laporanFile && ui.laporanFile.url) URL.revokeObjectURL(ui.laporanFile.url);
+    ui.laporanFile = Object.assign(f, { url: URL.createObjectURL(f.blob) });
+    const file = window.File ? new File([f.blob], f.nama, { type: f.blob.type }) : null;
+    const bisaBagi = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+    dialog.innerHTML = `<div class="stack" id="kirimLaporanDialog">
+      <div class="row"><h3>${t('Kirim laporan')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="hint"><b>${t('Periode')}:</b> ${esc(f.periode)} · ${t('{n} transaksi', { n: f.n })}<br><b>${t('File')}:</b> <span id="namaFileLaporan">${esc(f.nama)}</span></div>
+      <div class="small muted">${t('Isi file Excel:')}</div>
+      <ul class="isi-file small muted"><li>${t('Ringkasan + grafik omzet & laba')}</li><li>${t('Semua penjualan (yang belum lunas diberi warna)')}</li>
+        <li>${t('Pengeluaran')}</li><li>${t('Penjualan per hari')}</li><li>${t('Produk terlaris')}</li></ul>
+      ${bisaBagi ? `<button class="btn primary block" data-act="laporan-bagikan">${t('Bagikan file (WhatsApp, Gmail…)')}</button>` : ''}
+      <a class="btn ${bisaBagi ? '' : 'primary'} block" href="${ui.laporanFile.url}" download="${esc(f.nama)}" id="simpanLaporan">${t('Simpan ke HP')}</a>
+      <div class="small muted">${bisaBagi
+        ? t('Untuk mengirim ke email, pilih Gmail (atau aplikasi email lain) di menu bagikan. File sudah terlampir.')
+        : t('Simpan filenya, lalu lampirkan di email atau WhatsApp.')}</div>
+    </div>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
+  async function bagikanLaporan() {
+    const f = ui.laporanFile;
+    if (!f) return;
+    try {
+      await navigator.share({ files: [new File([f.blob], f.nama, { type: f.blob.type })], title: f.nama });
+    } catch (e) { /* pengguna membatalkan */ }
+  }
+
   // ---------- Aksi ----------
 
   function toast(text) {
@@ -1776,6 +2077,8 @@
       }
       case 'metode': ui.metode = el.dataset.m; render(); break;
       case 'tagih': bukaTagih(id); break;
+      case 'kirim-laporan': bukaKirimLaporan(); break;
+      case 'laporan-bagikan': bagikanLaporan(); break;
       case 'tagih-qris': bagikanQris(); break;
       case 'catat-bayar': bukaCatatBayar(id); break;
       case 'metode-lunas': $$('#formLunas [data-act=metode-lunas]').forEach((b) => b.setAttribute('aria-pressed', b === el)); $('#formLunas').metode.value = el.dataset.m; break;
@@ -1798,7 +2101,48 @@
       case 'mode': ui.authMode = el.dataset.m; ui.authMsg = null; render(); break;
       case 'sinkron': syncNow(true); break;
       case 'keluar': keluar(); break;
-      case 'gerbang': ui.gerbang = el.dataset.g; ui.gerbangMsg = null; render(); window.scrollTo(0, 0); break;
+      case 'gerbang':
+        if (el.dataset.g !== 'lupa' && el.dataset.g !== 'daftar') ui.gerbangAsal = el.dataset.g;
+        if (el.dataset.email != null) ui.authEmail = el.dataset.email;
+        ui.gerbang = el.dataset.g;
+        ui.gerbangMsg = null;
+        render();
+        window.scrollTo(0, 0);
+        break;
+      case 'pilih-akun':
+        if (cloud.user && el.dataset.email === cloud.user.email) {
+          if (ui.gantiAkun) { ui.gantiAkun = false; ui.gerbang = 'pilih'; } else ui.gerbang = 'owner';
+        } else {
+          ui.authEmail = el.dataset.email;
+          ui.gerbang = ui.gerbangAsal = 'masuk-akun';
+        }
+        ui.gerbangMsg = null;
+        render();
+        window.scrollTo(0, 0);
+        break;
+      case 'ke-ganti-akun':
+        ui.gantiAkun = true;
+        ui.authEmail = el.dataset.email || '';
+        ui.gerbang = ui.gerbangAsal = 'masuk-akun';
+        ui.gerbangMsg = null;
+        render();
+        window.scrollTo(0, 0);
+        break;
+      case 'batal-ganti-akun':
+        ui.gantiAkun = false;
+        ui.gerbang = 'pilih';
+        ui.gerbangMsg = null;
+        render();
+        break;
+      case 'lupakan-akun': {
+        const a = daftarAkun().find((x) => x.id === el.dataset.id);
+        const n = KelolaStore.arsipBelumTerkirim(window.localStorage, el.dataset.id);
+        const tanya = n
+          ? t('Akun {email} masih punya {n} perubahan yang belum terkirim ke cloud dan akan hilang. Tetap hapus dari HP ini?', { email: a ? a.email : '', n })
+          : t('Hapus {email} dari HP ini? Datanya tetap aman di cloud dan muncul lagi kalau akun ini masuk lagi.', { email: a ? a.email : '' });
+        if (confirm(tanya)) { lupakanAkun(el.dataset.id); render(); }
+        break;
+      }
       case 'pilih-kasir': pilihKasir(); break;
       case 'tanpa-akun': if (tanpaAkunBoleh()) masukMode('owner'); break;
       case 'ganti-mode': gantiMode(); break;
@@ -1923,6 +2267,10 @@
       e.preventDefault();
       await kirimGerbang(f);
     }
+    if (f.id === 'formGantiAkun') {
+      e.preventDefault();
+      await kirimGantiAkun(f);
+    }
     if (f.id === 'formDaftar') {
       e.preventDefault();
       await kirimDaftar(f);
@@ -2021,6 +2369,7 @@
       : t('Keluar dari akun? Data di perangkat ini akan dihapus, tapi tetap aman di cloud.');
     if (!confirm(tanya)) return;
     await cloud.client.auth.signOut().catch(() => {});
+    if (cloud.user) lupakanAkun(cloud.user.id);
     const wasStaff = modeStaff();
     setUser(null);
     if (wasStaff) S.hapusKasir(window.localStorage);
@@ -2059,6 +2408,10 @@
     cloud.peran = 'owner';
     kasirStaff = null;
     store.claim(user.id);
+    if (ui.usahaBaru && ui.usahaBaru.id === user.id) {
+      if (!profil().namaUsaha) store.put('profil', Object.assign({}, profil(), { namaUsaha: ui.usahaBaru.nama }), 'profil');
+      ui.usahaBaru = null;
+    }
     const remote = KelolaSync.supabaseRemote(cloud.client, user.id);
     cloud.sync = KelolaSync.createSync(store, remote, (status, detail) => {
       cloud.status = status;
@@ -2086,7 +2439,17 @@
     else renderBadge();
   }
 
-  async function setUser(user) {
+  // Panggilan untuk akun yang sama selagi masih dimuat memakai proses yang sama.
+  let userJalan = null;
+  function setUser(user) {
+    if (user && userJalan && userJalan.id === user.id) return userJalan.p;
+    const p = pasangUser(user);
+    userJalan = user ? { id: user.id, p } : null;
+    p.finally(() => { if (userJalan && userJalan.p === p) userJalan = null; });
+    return p;
+  }
+
+  async function pasangUser(user) {
     const prev = cloud.user && cloud.user.id;
     cloud.user = user;
     if (!user) {
@@ -2098,6 +2461,17 @@
       return;
     }
     if (prev === user.id && cloud.peran) return;
+    if (prev && prev !== user.id) {
+      // Ganti akun: lupakan semua yang terkait akun sebelumnya.
+      cloud.sync = null;
+      cloud.peran = null;
+      cloud.status = 'idle';
+      kasirStaff = null;
+      ui.staff = { list: null, kode: null, msg: null, belumSiap: false, memuat: false };
+      ui.cart = {};
+      ui.trxTerakhir = null;
+      ui.laporanFile = null;
+    }
     cloud.staffApi = S.supabaseStaff(cloud.client);
     const peran = await cekPeran(user);
     if (!cloud.user || cloud.user.id !== user.id) return;
