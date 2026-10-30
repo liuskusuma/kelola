@@ -43,6 +43,8 @@
       --ok: #12805c;
       --warn: #a65d00;
       --danger: #c8372d;
+      --grafik-1: #3159c8;
+      --grafik-2: #d99a00;
       --f: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
       --f-display: "Exo 2", Bahnschrift, "Segoe UI", system-ui, sans-serif;
       --raised: 9px 9px 20px var(--raise-d), -9px -9px 20px var(--raise-l);
@@ -69,6 +71,8 @@
       --ok: #5fd6a4;
       --warn: #fbc02d;
       --danger: #ff8a7a;
+      --grafik-1: #6385ec;
+      --grafik-2: #b08200;
       color-scheme: dark;
     }
     @media (prefers-color-scheme: dark) {
@@ -88,6 +92,8 @@
         --ok: #5fd6a4;
         --warn: #fbc02d;
         --danger: #ff8a7a;
+        --grafik-1: #6385ec;
+        --grafik-2: #b08200;
         color-scheme: dark;
       }
     }
@@ -110,7 +116,7 @@
       padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
       background: var(--bg);
     }
-    header.nav .logo { width: 48px; height: 48px; border-radius: 12px; box-shadow: var(--raised-sm); flex: 0 0 auto; }
+    header.nav .logo { width: 48px; height: 48px; border-radius: 12px; object-fit: contain; background: #fff; box-shadow: var(--raised-sm); flex: 0 0 auto; }
     header.nav .titles { flex: 1 1 auto; min-width: 0; }
     header.nav h1 {
       font-family: var(--f-display); font-style: italic; font-weight: 800;
@@ -217,8 +223,10 @@
       box-shadow: var(--inset-sm); outline: none;
     }
     input::placeholder { color: var(--faint); }
+    input[type="date"] { min-width: 0; -webkit-appearance: none; appearance: none; padding: 11px 10px; font-size: 15px; }
+    input[type="date"]::-webkit-date-and-time-value { text-align: left; }
     input:focus-visible, select:focus-visible { box-shadow: var(--inset-sm), 0 0 0 2px var(--primary); }
-    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
     .hint { background: var(--well); box-shadow: var(--inset-sm); border-radius: 20px; padding: 14px 16px; font-size: 14px; }
     .total { font-family: var(--f-display); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
@@ -226,6 +234,39 @@
     .seg { display: flex; gap: 4px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 999px; padding: 4px; margin-bottom: 18px; }
     .seg button { flex: 1; border: 0; background: none; color: var(--muted); border-radius: 999px; padding: 8px 6px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .seg button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: var(--raised-sm); font-weight: 700; }
+    .seg.periode button { padding: 8px 2px; font-size: 13px; }
+    details.lipat > summary { cursor: pointer; list-style: none; }
+    details.lipat > summary::-webkit-details-marker { display: none; }
+    details.lipat > summary::after { content: '›'; font-size: 20px; line-height: 1; transform: rotate(90deg); transition: transform .15s; }
+    details.lipat[open] > summary::after { transform: rotate(-90deg); }
+    .pesan-wa { white-space: pre-wrap; font: inherit; font-size: 14px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 16px; padding: 12px 14px; margin: 0; max-height: 40vh; overflow: auto; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+    .swatch { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--cell); box-shadow: var(--raised-sm); cursor: pointer; padding: 0; }
+    .swatch.bawaan { background: linear-gradient(135deg, #0a2a6e 50%, #fecb10 50%); }
+    .swatch[aria-pressed="true"] { outline: 3px solid var(--fg); outline-offset: 2px; }
+    .logo-pratinjau { width: 64px; height: 64px; border-radius: 14px; object-fit: contain; background: #fff; box-shadow: var(--raised-sm); flex: 0 0 auto; }
+    .grafik { padding-top: 14px; }
+    .grafik .legenda { display: flex; gap: 16px; color: var(--muted); margin: 0 0 6px 4px; }
+    .grafik i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    .grafik i.omzet, .grafik path.omzet { background: var(--grafik-1); fill: var(--grafik-1); }
+    .grafik i.laba, .grafik path.laba { background: var(--grafik-2); fill: var(--grafik-2); }
+    .grafik .kanvas { position: relative; }
+    .grafik svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .grafik svg text { font-size: 10px; fill: var(--faint); font-variant-numeric: tabular-nums; }
+    .grafik svg line.grid { stroke: var(--sep); stroke-width: 1; }
+    .grafik svg line.dasar { stroke: var(--faint); stroke-width: 1; opacity: .5; }
+    .grafik .sentuh { fill: transparent; cursor: pointer; }
+    .grafik .sentuh.aktif { fill: var(--fg); opacity: .06; }
+    .grafik .tip { position: absolute; top: -6px; transform: translateY(-100%); background: var(--cell); color: var(--fg); box-shadow: var(--raised-sm); border-radius: 12px; padding: 8px 10px; font-size: 13px; line-height: 1.5; pointer-events: none; white-space: nowrap; z-index: 2; }
+    .grafik .tip .muted { color: var(--muted); }
+    .tabel-grafik { margin-top: 8px; }
+    .tabel-grafik summary { cursor: pointer; color: var(--accent-text); font-weight: 600; }
+    .tabel-grafik table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .tabel-grafik th, .tabel-grafik td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--sep); }
+    .tabel-grafik th:first-child, .tabel-grafik td:first-child { text-align: left; }
+    .tabel-grafik th { color: var(--muted); font-weight: 600; }
+    .qris-gambar { display: block; width: 100%; max-width: 260px; margin: 0 auto; border-radius: 14px; background: #fff; }
+    .qris-gambar.besar { max-width: 420px; }
 
     .empty { text-align: center; color: var(--muted); padding: 20px 8px; }
     .msg { font-size: 14px; padding: 10px 14px; border-radius: 16px; }
@@ -286,7 +327,7 @@
       font-family: var(--f); font-size: 11px; font-weight: 700; letter-spacing: .3px;
     }
     .aksi { display: flex; gap: 8px; flex: 0 0 auto; }
-    .peringatan { border-left: 6px solid var(--yellow); margin-top: 14px; }
+    .peringatan { border-left: 6px solid var(--tanda, var(--yellow)); margin-top: 14px; }
     .baris { display: grid; grid-template-columns: minmax(0, 1fr) 68px 34px 32px; gap: 8px; align-items: center; }
     .baris + .baris { margin-top: 8px; }
     .baris .hapus {
@@ -373,6 +414,8 @@
   <script src="js/bahasa.js"></script>
   <script src="js/store.js"></script>
   <script src="js/hitung.js"></script>
+  <script src="js/warna.js"></script>
+  <script src="js/grafik.js"></script>
   <script src="js/penjualan.js"></script>
   <script src="js/staff.js"></script>
   <script src="js/sync.js"></script>

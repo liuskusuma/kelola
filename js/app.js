@@ -4,6 +4,8 @@
   const store = KelolaStore.createStore(window.localStorage);
   const H = KelolaHitung;
   const P = KelolaPenjualan;
+  const W = KelolaWarna;
+  const G = KelolaGrafik;
   const S = KelolaStaff;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
@@ -31,9 +33,15 @@
     view: 'kasir',
     cart: {}, // produkId -> qty
     bayar: '',
+    metode: 'tunai', // tunai | qris | nanti
+    pelanggan: { nama: '', wa: '' }, // untuk "bayar nanti"
     trxTerakhir: null, // penjualan yang baru disimpan, untuk tombol struk
     produkTab: 'produk', // produk | bahan
     periode: 'hari',
+    dari: '', // periode pilihan sendiri (YYYY-MM-DD)
+    sampai: '',
+    lipat: {}, // bagian Akun yang sedang dibuka
+    grafik: null, // data grafik laporan yang sedang tampil, untuk keterangan saat disentuh
     authMode: 'masuk',
     authMsg: null,
     authEmail: '',
@@ -137,7 +145,33 @@
     document.documentElement.dataset.tema = setel.tema;
     document.documentElement.lang = setel.bahasa;
     const gelap = setel.tema === 'gelap' || (setel.tema === 'otomatis' && matchMedia('(prefers-color-scheme: dark)').matches);
-    $$('meta[name="theme-color"]').forEach((m) => { m.content = gelap ? '#14234f' : '#f2f5fa'; m.removeAttribute('media'); });
+    const tm = temaUsaha();
+    $$('meta[name="theme-color"]').forEach((m) => {
+      m.content = tm ? tm[gelap ? 'gelap' : 'terang']['--bg'] : gelap ? '#14234f' : '#f2f5fa';
+      m.removeAttribute('media');
+    });
+  }
+
+  // Warna dan logo usaha (dipilih owner di Akun). Berlaku juga di HP staff.
+  const temaUsaha = () => { const w = usaha().warna; return w && w.utama ? W.tema(w) : null; };
+  let temaTerpasang = null;
+
+  function terapkanWarnaUsaha() {
+    const tm = temaUsaha();
+    const kunci = tm ? JSON.stringify(tm) : '';
+    if (kunci !== temaTerpasang) {
+      temaTerpasang = kunci;
+      let el = $('#temaUsaha');
+      if (!el) { el = document.createElement('style'); el.id = 'temaUsaha'; document.head.appendChild(el); }
+      const vars = (o) => Object.entries(o).map(([k, v]) => `${k}: ${v};`).join(' ');
+      el.textContent = tm ? `:root { ${vars(tm.terang)} }
+        :root[data-tema="gelap"] { ${vars(tm.gelap)} }
+        @media (prefers-color-scheme: dark) { :root[data-tema="otomatis"] { ${vars(tm.gelap)} } }` : '';
+      terapkanTema();
+    }
+    const logo = $('header.nav .logo');
+    const src = usaha().logo || 'icons/logo.svg';
+    if (logo.getAttribute('src') !== src) logo.setAttribute('src', src);
   }
 
   function ubahPengaturan(patch) {
@@ -170,6 +204,7 @@
     $('#judul').textContent = t(judul);
     $('#subjudul').textContent = usaha().namaUsaha || t(sub);
     document.body.classList.toggle('hanya-kasir', hanyaKasir());
+    terapkanWarnaUsaha();
     renderBadge();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
@@ -255,17 +290,48 @@
           <div class="qty"><button data-act="kurang" data-id="${x.rec.id}" aria-label="${t('Kurangi')}">−</button><span>${x.qty}</span>
           <button data-act="tambah-keranjang" data-id="${x.rec.id}" aria-label="${t('Tambah')}" ${bisaTambah(x.rec.id) ? '' : 'disabled'}>+</button></div></li>`).join('')}</ul>
         <div class="row" style="margin-top:8px"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>
-        <div class="two" style="margin-top:14px">
-          <label class="field"><span>${t('Uang diterima')}</span><input id="bayar" type="number" inputmode="numeric" min="0" value="${esc(ui.bayar)}" placeholder="${total}"></label>
-          <div class="field"><span class="lbl">${t('Kembalian')}</span><div class="total" id="kembalian" style="padding:6px 4px">${bayar >= total ? rp(bayar - total) : '–'}</div></div>
-        </div>
+        <div class="seg kecil" id="metodeBayar" role="group" aria-label="${t('Cara bayar')}" style="margin:14px 0 0">${[['tunai', t('Tunai')], ['qris', t('QRIS')], ['nanti', t('Bayar nanti')]]
+          .map(([k, l]) => `<button data-act="metode" data-m="${k}" aria-pressed="${ui.metode === k}">${l}</button>`).join('')}</div>
+        ${isianBayar(total, bayar)}
         <div class="row" style="margin-top:16px">
           <button class="btn" data-act="kosongkan">${t('Kosongkan')}</button>
-          <button class="btn primary" data-act="simpan-penjualan">${t('Simpan penjualan')}</button>
+          <button class="btn primary" data-act="simpan-penjualan">${t(ui.metode === 'qris' ? 'Sudah dibayar, simpan' : ui.metode === 'nanti' ? 'Simpan sebagai tagihan' : 'Simpan penjualan')}</button>
         </div></div>`
       : '';
     const petunjuk = items.length ? '' : `<div class="foot" style="margin:0 8px 14px">${t('Ketuk produk untuk menambahkannya ke keranjang.')}</div>`;
     return `${info}${cart}<div class="group-title">${t('Produk')}</div>${petunjuk}<div class="grid">${tiles}</div>`;
+  }
+
+  // Isian di keranjang sesuai cara bayar.
+  function isianBayar(total, bayar) {
+    if (ui.metode === 'qris') {
+      return usaha().qris
+        ? `<button class="btn block" style="margin-top:14px" data-act="qris">${t('Tampilkan QRIS')}</button>
+           <div class="small muted" style="margin-top:8px">${t('Simpan setelah pembayaran masuk ke rekening atau e-wallet Anda.')}</div>`
+        : `<div class="small muted" style="margin-top:14px">${t('Owner belum menyimpan gambar QRIS di Akun. Simpan setelah pembayaran masuk.')}</div>`;
+    }
+    if (ui.metode === 'nanti') {
+      const kenal = modeStaff() ? [] : daftarPelanggan();
+      return `<div class="two" style="margin-top:14px">
+          <label class="field"><span>${t('Nama pembeli')}</span><input id="pelangganNama" list="daftarPelanggan" autocomplete="off" value="${esc(ui.pelanggan.nama)}" placeholder="${t('Contoh: Bu Ani')}"></label>
+          <label class="field"><span>${t('No. WhatsApp (boleh kosong)')}</span><input id="pelangganWa" type="tel" inputmode="tel" value="${esc(ui.pelanggan.wa)}" placeholder="0812…"></label>
+        </div>
+        <datalist id="daftarPelanggan">${kenal.map((p) => `<option value="${esc(p.nama)}">`).join('')}</datalist>
+        <div class="small muted" style="margin-top:8px">${t('Penjualan dicatat sebagai tagihan. Tagih lewat WhatsApp dan tandai lunas di Laporan.')}</div>`;
+    }
+    return `<div class="two" style="margin-top:14px">
+          <label class="field"><span>${t('Uang diterima')}</span><input id="bayar" type="number" inputmode="numeric" min="0" value="${esc(ui.bayar)}" placeholder="${total}"></label>
+          <div class="field"><span class="lbl">${t('Kembalian')}</span><div class="total" id="kembalian" style="padding:6px 4px">${bayar >= total ? rp(bayar - total) : '–'}</div></div>
+        </div>`;
+  }
+
+  // Pelanggan yang pernah "bayar nanti", terbaru dulu, untuk isian otomatis.
+  function daftarPelanggan() {
+    const map = new Map();
+    store.list('transaksi').filter((r) => r.data.pelanggan)
+      .sort((a, b) => b.data.waktu.localeCompare(a.data.waktu))
+      .forEach((r) => { const k = r.data.pelanggan.nama.toLowerCase(); if (!map.has(k)) map.set(k, r.data.pelanggan); });
+    return [...map.values()];
   }
 
   function viewProduk() {
@@ -330,12 +396,29 @@
     return start.getTime();
   }
 
+  const tanggalIni = (d) => {
+    const dua = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${dua(d.getMonth() + 1)}-${dua(d.getDate())}`;
+  };
+
+  // Awal dan akhir (tidak termasuk) periode laporan, dalam milidetik.
+  function rentangLaporan() {
+    if (ui.periode !== 'pilih') return [rentang(ui.periode), Infinity];
+    const now = new Date();
+    if (!ui.dari) ui.dari = tanggalIni(new Date(now.getFullYear(), now.getMonth(), 1));
+    if (!ui.sampai) ui.sampai = tanggalIni(now);
+    if (ui.dari > ui.sampai) [ui.dari, ui.sampai] = [ui.sampai, ui.dari];
+    const [y1, m1, d1] = ui.dari.split('-').map(Number);
+    const [y2, m2, d2] = ui.sampai.split('-').map(Number);
+    return [new Date(y1, m1 - 1, d1).getTime(), new Date(y2, m2 - 1, d2 + 1).getTime()];
+  }
+
   // Disimpan dalam Bahasa Indonesia; ditampilkan sesuai bahasa yang dipilih.
   const KATEGORI = ['Sewa tempat', 'Listrik & air', 'Gaji', 'Transportasi', 'Iklan & promosi', 'Peralatan', 'Lainnya'];
 
   function viewLaporan() {
-    const from = rentang(ui.periode);
-    const dalam = (r) => Date.parse(r.data.waktu) >= from;
+    const [from, to] = rentangLaporan();
+    const dalam = (r) => { const w = Date.parse(r.data.waktu); return w >= from && w < to; };
     const urut = (a, b) => b.data.waktu.localeCompare(a.data.waktu);
     const trx = store.list('transaksi').filter(dalam).sort(urut);
     const keluar = store.list('pengeluaran').filter(dalam).sort(urut);
@@ -350,11 +433,16 @@
       terjual[i.nama].omzet += i.qty * i.harga;
     }));
     const top = Object.entries(terjual).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 5);
-    const seg = [['hari', t('Hari ini')], ['7hari', t('7 hari')], ['bulan', t('Bulan ini')], ['semua', t('Semua')]]
+    const seg = [['hari', t('Hari ini')], ['7hari', t('7 hari')], ['bulan', t('Bulan ini')], ['semua', t('Semua')], ['pilih', t('Tanggal')]]
       .map(([k, l]) => `<button data-act="periode" data-p="${k}" aria-pressed="${ui.periode === k}">${l}</button>`).join('');
+    const pilihTanggal = ui.periode === 'pilih'
+      ? `<div class="card two" id="pilihTanggal" style="margin-bottom:18px">
+          <label class="field"><span>${t('Dari tanggal')}</span><input type="date" data-tanggal="dari" value="${esc(ui.dari)}" max="${esc(ui.sampai)}"></label>
+          <label class="field"><span>${t('Sampai tanggal')}</span><input type="date" data-tanggal="sampai" value="${esc(ui.sampai)}" min="${esc(ui.dari)}"></label></div>`
+      : '';
     const fmtWaktu = (iso) => new Date(iso).toLocaleString(lokal(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const fmtTanggal = (iso) => new Date(iso).toLocaleDateString(lokal(), { day: 'numeric', month: 'short' });
-    return `<div class="group-title">${t('Periode')}</div><div class="seg">${seg}</div>
+    return `<div class="group-title">${t('Periode')}</div><div class="seg periode">${seg}</div>${pilihTanggal}
       <div class="stats">
         <div class="stat utama"><div class="lbl">${t('Omzet')}</div><div class="value">${rp(omzet)}</div></div>
         <div class="stat"><div class="lbl">${t('Laba kotor')}</div><div class="value">${rp(laba)}</div></div>
@@ -364,6 +452,8 @@
         <div class="stat"><div class="lbl">${t('Margin rata-rata')}</div><div class="value">${omzet ? angka.format((laba / omzet) * 100) + '%' : '–'}</div></div>
       </div>
       <div class="foot">${t('Laba kotor = omzet dikurangi modal barang yang terjual. Laba bersih = laba kotor dikurangi pengeluaran.')}</div>
+      ${viewGrafik(trx, from, to)}
+      ${viewTagihan()}
       <div class="group-title">${t('Produk terlaris')}</div>
       <div class="card">${top.length
         ? `<ul class="list">${top.map(([n, v]) => `<li class="row"><span class="nama">${esc(n)}</span><span class="small muted">${t('{n} terjual', { n: angka.format(v.qty) })} · ${rp(v.omzet)}</span></li>`).join('')}</ul>`
@@ -377,10 +467,169 @@
       <div class="group-title">${t('Riwayat penjualan')}</div>
       <div class="card">${trx.length
         ? `<ul class="list">${trx.map((r) => `<li class="row"><div><div><span class="nama">${rp(r.data.total)}</span> <span class="small muted">· ${t('laba')} ${rp(r.data.laba)}</span></div>
-            <div class="small muted">${fmtWaktu(r.data.waktu)}${r.data.staff ? ' · ' + t('oleh {nama}', { nama: esc(r.data.staff) }) : ''} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div></div>
+            <div class="small muted">${fmtWaktu(r.data.waktu)}${r.data.staff ? ' · ' + t('oleh {nama}', { nama: esc(r.data.staff) }) : ''} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div>${tagBayar(r.data)}</div>
             <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${r.id}">${t('Struk')}</button>
             <button class="btn kecil danger" data-act="batal-trx" data-id="${r.id}">${t('Batalkan')}</button></div></li>`).join('')}</ul>`
         : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
+  }
+
+  // Grafik batang omzet dan laba kotor per jam/hari/bulan, digambar sebagai SVG.
+  function viewGrafik(trx, from, to) {
+    const { satuan, kelompok } = G.kelompokkan(trx.map((r) => r.data), from, to, Date.now());
+    const label = (w, panjang) => {
+      const d = new Date(w);
+      if (satuan === 'jam') return panjang ? `${String(d.getHours()).padStart(2, '0')}.00–${String(d.getHours() + 1).padStart(2, '0')}.00` : String(d.getHours());
+      if (satuan === 'hari') return d.toLocaleDateString(lokal(), panjang ? { weekday: 'short', day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short' });
+      return d.toLocaleDateString(lokal(), { month: panjang ? 'long' : 'short', year: panjang || d.getMonth() === 0 ? 'numeric' : undefined });
+    };
+    ui.grafik = kelompok.map((k) => Object.assign({ label: label(k.mulai, true) }, k));
+    const judul = t({ jam: 'Omzet & laba per jam', hari: 'Omzet & laba per hari', bulan: 'Omzet & laba per bulan' }[satuan]);
+    if (!kelompok.some((k) => k.n)) {
+      return `<div class="group-title">${judul}</div><div class="card"><div class="empty">${t('Belum ada penjualan di periode ini.')}</div></div>`;
+    }
+    const L = 40;
+    const R = 6;
+    const T = 10;
+    const B = 22;
+    const Wd = 340;
+    const Ht = 190;
+    const w = Wd - L - R;
+    const h = Ht - T - B;
+    const { atas, langkah } = G.skala(Math.max(...kelompok.map((k) => Math.max(k.omzet, k.laba))));
+    const y = (v) => T + h - (Math.max(0, v) / atas) * h;
+    const slot = w / kelompok.length;
+    const bw = Math.max(1.5, Math.min(14, (slot * 0.72 - 2) / 2));
+    const batang = (x, v, kelas) => {
+      const tinggi = y(0) - y(v);
+      if (tinggi <= 0) return '';
+      const r = Math.min(4, bw / 2, tinggi);
+      const top = y(v);
+      return `<path class="${kelas}" d="M${x},${y(0)}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${y(0)}Z"/>`;
+    };
+    const garis = [];
+    for (let v = 0; v <= atas + 1e-9; v += langkah) {
+      garis.push(`<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" class="${v ? 'grid' : 'dasar'}"/>
+        <text x="${L - 6}" y="${y(v) + 3.5}" text-anchor="end">${G.ringkas(v)}</text>`);
+    }
+    const tiap = Math.ceil(kelompok.length / 6);
+    const isi = kelompok.map((k, i) => {
+      const x0 = L + i * slot + (slot - (bw * 2 + 2)) / 2;
+      const teks = i % tiap === 0 ? `<text x="${L + i * slot + slot / 2}" y="${Ht - 6}" text-anchor="middle">${esc(label(k.mulai))}</text>` : '';
+      return `${batang(x0, k.omzet, 'omzet')}${batang(x0 + bw + 2, k.laba, 'laba')}${teks}
+        <rect class="sentuh" data-gi="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${h}"/>`;
+    }).join('');
+    const baris = ui.grafik.filter((k) => k.n).map((k) => `<tr><td>${esc(k.label)}</td><td>${rp(k.omzet)}</td><td>${rp(k.laba)}</td></tr>`).join('');
+    return `<div class="group-title">${judul}</div>
+      <div class="card grafik" id="grafik">
+        <div class="legenda small"><span><i class="omzet"></i>${t('Omzet')}</span><span><i class="laba"></i>${t('Laba kotor')}</span></div>
+        <div class="kanvas"><svg viewBox="0 0 ${Wd} ${Ht}" role="img" aria-label="${judul}">${garis.join('')}${isi}</svg>
+          <div class="tip" id="grafikTip" hidden></div></div>
+        <details class="tabel-grafik"><summary class="small">${t('Lihat sebagai tabel')}</summary>
+          <table><thead><tr><th>${t('Waktu')}</th><th>${t('Omzet')}</th><th>${t('Laba kotor')}</th></tr></thead><tbody>${baris}</tbody></table></details>
+      </div>`;
+  }
+
+  // Keterangan angka saat batang grafik disentuh atau disorot.
+  function tunjukGrafik(el) {
+    const k = ui.grafik && ui.grafik[+el.dataset.gi];
+    const tip = $('#grafikTip');
+    if (!k || !tip) return;
+    $$('#grafik .sentuh.aktif').forEach((x) => x.classList.remove('aktif'));
+    el.classList.add('aktif');
+    tip.innerHTML = `<b>${esc(k.label)}</b><div><i class="omzet"></i>${t('Omzet')} <b>${rp(k.omzet)}</b></div>
+      <div><i class="laba"></i>${t('Laba kotor')} <b>${rp(k.laba)}</b></div><div class="muted">${t('{n} transaksi', { n: k.n })}</div>`;
+    tip.hidden = false;
+    const kotak = $('#grafik .kanvas').getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const tengah = r.left + r.width / 2 - kotak.left;
+    tip.style.left = Math.max(0, Math.min(kotak.width - tip.offsetWidth, tengah - tip.offsetWidth / 2)) + 'px';
+  }
+
+  // Tanda cara bayar di riwayat penjualan.
+  function tagBayar(d) {
+    if (d.metode === 'nanti') {
+      return P.sisaTagihan(d) > 0
+        ? `<div class="small warn">${t('Belum lunas: {pelanggan}, sisa {sisa}', { pelanggan: esc(d.pelanggan.nama), sisa: rp(P.sisaTagihan(d)) })}</div>`
+        : `<div class="small ok">${t('Lunas · {pelanggan}', { pelanggan: esc(d.pelanggan.nama) })}</div>`;
+    }
+    return d.metode === 'qris' ? `<span class="tag">QRIS</span>` : '';
+  }
+
+  // Semua penjualan "bayar nanti" yang belum lunas, tanpa melihat periode.
+  function tagihanTerbuka() {
+    return store.list('transaksi').filter((r) => P.sisaTagihan(r.data) > 0).sort((a, b) => a.data.waktu.localeCompare(b.data.waktu));
+  }
+
+  function viewTagihan() {
+    const list = tagihanTerbuka();
+    if (!list.length) return '';
+    const total = list.reduce((s, r) => s + P.sisaTagihan(r.data), 0);
+    const hari = (iso) => Math.floor((Date.now() - Date.parse(iso)) / 864e5);
+    return `<div class="group-title"><span>${t('Belum lunas')}</span><span>${rp(total)}</span></div>
+      <div class="card" id="tagihan"><ul class="list">${list.map((r) => {
+        const d = r.data;
+        const umur = hari(d.waktu);
+        return `<li class="stack"><div class="row"><div><div class="nama">${esc(d.pelanggan.nama)}</div>
+            <div class="small muted">${t('Sisa {sisa} dari {total}', { sisa: rp(P.sisaTagihan(d)), total: rp(d.total) })} · ${umur ? t('{n} hari lalu', { n: umur }) : t('hari ini')}</div></div></div>
+          <div class="row" style="justify-content:flex-end;gap:8px">
+            <button class="btn kecil" data-act="tagih" data-id="${r.id}">${t('Tagih via WA')}</button>
+            <button class="btn kecil primary" data-act="catat-bayar" data-id="${r.id}">${t('Catat bayar')}</button></div></li>`;
+      }).join('')}</ul></div>`;
+  }
+
+  function teksTagihan(d) {
+    const p = usaha();
+    const masuk = d.total - P.sisaTagihan(d);
+    const tgl = new Date(d.waktu).toLocaleDateString(lokal(), { day: 'numeric', month: 'long', year: 'numeric' });
+    return [
+      t('Halo {nama}, berikut tagihan dari {usaha}:', { nama: d.pelanggan.nama, usaha: p.namaUsaha || 'Kelola' }),
+      t('Tanggal: {tanggal}', { tanggal: tgl }), '',
+      ...d.items.map((i) => `- ${i.nama} ×${angka.format(i.qty)} = ${rp(i.qty * i.harga)}`), '',
+      `${t('Total')}: ${rp(d.total)}`,
+      masuk > 0 ? `${t('Sudah dibayar')}: ${rp(masuk)}` : null,
+      `*${t('Sisa tagihan')}: ${rp(P.sisaTagihan(d))}*`, '',
+      p.qris ? t('Bisa dibayar tunai atau lewat QRIS. Terima kasih.') : t('Terima kasih.'),
+    ].filter((x) => x !== null).join('\n');
+  }
+
+  function bukaTagih(id) {
+    const r = store.get(id);
+    if (!r || !r.data.pelanggan) return;
+    const d = r.data;
+    const teks = teksTagihan(d);
+    const no = P.nomorWa(d.pelanggan.wa);
+    const bisaBagiQris = !!(usaha().qris && navigator.canShare && window.File);
+    dialog.innerHTML = `<div class="stack" id="dialogTagih">
+      <div class="row"><h3>${t('Tagih {nama}', { nama: esc(d.pelanggan.nama) })}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <pre class="pesan-wa">${esc(teks)}</pre>
+      <a class="btn primary block" href="https://wa.me/${no}?text=${encodeURIComponent(teks)}" target="_blank" rel="noopener">${t('Kirim lewat WhatsApp')}</a>
+      ${no ? '' : `<div class="small muted">${t('Nomor WhatsApp belum dicatat, jadi pilih kontaknya sendiri di WhatsApp.')}</div>`}
+      ${bisaBagiQris ? `<button class="btn block" data-act="tagih-qris">${t('Kirim gambar QRIS')}</button>` : ''}
+    </div>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
+  async function bagikanQris() {
+    try {
+      const blob = await (await fetch(usaha().qris)).blob();
+      const file = new File([blob], 'qris.jpg', { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
+    } catch (e) { /* dibatalkan atau tidak didukung */ }
+  }
+
+  function bukaCatatBayar(id) {
+    const r = store.get(id);
+    if (!r) return;
+    const sisa = P.sisaTagihan(r.data);
+    dialog.innerHTML = `<form id="formLunas" class="stack" method="dialog">
+      <div class="row"><h3>${t('Catat bayar')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="small muted">${t('{nama} · sisa {sisa}', { nama: esc(r.data.pelanggan.nama), sisa: rp(sisa) })}</div>
+      <label class="field"><span>${t('Jumlah dibayar (Rp)')}</span><input name="jumlah" type="number" inputmode="numeric" min="1" max="${sisa}" required value="${sisa}"></label>
+      <div class="seg kecil" role="group">${[['tunai', t('Tunai')], ['qris', t('QRIS')]].map(([k, l]) => `<button type="button" data-act="metode-lunas" data-m="${k}" aria-pressed="${k === 'tunai'}">${l}</button>`).join('')}</div>
+      <input type="hidden" name="metode" value="tunai"><input type="hidden" name="trxId" value="${id}">
+      <button class="btn primary">${t('Simpan')}</button>
+    </form>`;
+    if (!dialog.open) dialog.showModal();
   }
 
   const pilihSetel = (nama, nilai, opsi) => `<div class="seg kecil" role="group">${opsi.map(([k, l]) =>
@@ -394,6 +643,18 @@
   }
 
   const pesan = (m) => (m ? `<div class="msg ${m.type}">${esc(m.text)}</div>` : '');
+
+  // Satu bagian di halaman Akun yang bisa dibuka-tutup.
+  function lipat(kunci, judul, isi, bawaanBuka) {
+    const buka = kunci in ui.lipat ? ui.lipat[kunci] : !!bawaanBuka;
+    return `<details class="lipat" data-lipat="${kunci}" ${buka ? 'open' : ''}><summary class="group-title">${judul}</summary>${isi}</details>`;
+  }
+
+  // Ubah "<div class="group-title">Judul</div>isi" menjadi bagian yang bisa dibuka-tutup.
+  function jadiLipat(kunci, html, bawaanBuka) {
+    const m = html.match(/^\s*<div class="group-title">([\s\S]*?)<\/div>([\s\S]*)$/);
+    return m ? lipat(kunci, m[1], m[2], bawaanBuka) : html;
+  }
 
   // HP bersama yang dikunci ke kasir: hanya pengaturan bahasa dan buka kunci.
   function viewKunci() {
@@ -484,7 +745,48 @@
       <label class="field"><span>${t('Alamat atau nomor WhatsApp (tampil di struk)')}</span><input id="kontakUsahaInput" value="${esc(p.kontak || '')}" placeholder="${t('Contoh: Jl. Melati 5 · 0812 3456 7890')}"></label>
       <button class="btn" data-act="simpan-profil">${t('Simpan')}</button></div>`;
     if (cloud.user && cloud.peran === 'owner' && !ui.staff.list && !ui.staff.memuat && !ui.staff.belumSiap) muatStaff();
-    return `${profilUsaha}${viewPengaturan()}${viewCloud()}${viewStaff()}${viewModeKasir()}${viewGabung()}`;
+    return [
+      jadiLipat('profil', profilUsaha),
+      jadiLipat('qris', viewQris()),
+      jadiLipat('merek', viewMerek()),
+      jadiLipat('pengaturan', viewPengaturan()),
+      jadiLipat('cloud', viewCloud(), !cloud.user),
+      viewStaff() && jadiLipat('staff', viewStaff(), !!ui.staff.kode),
+      jadiLipat('kunci', viewModeKasir(), !!ui.kunciMsg),
+      viewGabung() && jadiLipat('gabung', viewGabung(), !!ui.gabungMsg),
+    ].filter(Boolean).join('');
+  }
+
+  // Owner: logo di pojok kiri atas dan warna aplikasi dari logo.
+  function viewMerek() {
+    const p = profil();
+    const palet = p.palet || [];
+    const w = p.warna && p.warna.utama;
+    const pilihan = palet.filter((h) => W.luminans(h) < 0.45);
+    const swatch = (pilihan.length ? pilihan : palet).map((h) => `<button type="button" class="swatch" data-act="warna" data-w="${h}" aria-pressed="${w === h}" style="background:${h}" aria-label="${h}"></button>`).join('');
+    return `<div class="group-title">${t('Logo & warna usaha')}</div><div class="card stack" id="merek">
+      <div class="dengan-foto"><img class="logo-pratinjau" src="${esc(p.logo || 'icons/logo.svg')}" alt="">
+        <div class="small muted">${t('Logo ini tampil di pojok kiri atas, juga di HP staff.')}</div></div>
+      <div class="foto-aksi">
+        <label class="btn kecil"><input type="file" accept="image/*" data-logo hidden>${p.logo ? t('Ganti logo') : t('Pilih logo')}</label>
+        ${p.logo ? `<button type="button" class="link small danger" data-act="hapus-logo">${t('Pakai logo Kelola')}</button>` : ''}
+      </div>
+      <div class="field"><span class="lbl">${t('Warna aplikasi')}</span>
+        <div class="swatches"><button type="button" class="swatch bawaan" data-act="warna" data-w="" aria-pressed="${!w}" aria-label="${t('Warna Kelola')}"></button>${swatch}</div>
+        <div class="small muted" style="margin-top:6px">${palet.length ? t('Pilih salah satu warna dari logo Anda, atau warna Kelola di paling kiri.') : t('Pilih logo dulu, nanti warna-warnanya muncul di sini.')}</div></div>
+    </div>`;
+  }
+
+  // Owner: gambar QRIS untuk ditunjukkan ke pembeli di kasir.
+  function viewQris() {
+    const q = profil().qris;
+    return `<div class="group-title">${t('Pembayaran QRIS')}</div><div class="card stack" id="qrisSetel">
+      <div class="small muted">${t('Simpan gambar QRIS usaha Anda. Di kasir akan muncul tombol QRIS untuk ditunjukkan ke pembeli. Hanya owner yang bisa mengganti gambar ini.')}</div>
+      ${q ? `<img class="qris-gambar" src="${esc(q)}" alt="QRIS">` : ''}
+      <div class="foto-aksi">
+        <label class="btn kecil"><input type="file" accept="image/*" data-qris hidden>${q ? t('Ganti gambar QRIS') : t('Pilih gambar QRIS')}</label>
+        ${q ? `<button type="button" class="link small danger" data-act="hapus-qris">${t('Hapus QRIS')}</button>` : ''}
+      </div></div>`;
   }
 
   function viewCloud() {
@@ -634,12 +936,12 @@
   }
 
   // Perkecil foto supaya ringan disimpan di perangkat dan dikirim ke cloud.
-  function kecilkanFoto(file) {
+  function kecilkanFoto(file, maks, mutu) {
     return new Promise((ok, gagal) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
-        const MAKS = 480;
+        const MAKS = maks || 480;
         const skala = Math.min(1, MAKS / Math.max(img.naturalWidth, img.naturalHeight));
         const c = document.createElement('canvas');
         c.width = Math.round(img.naturalWidth * skala);
@@ -649,7 +951,7 @@
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        ok(c.toDataURL('image/jpeg', 0.72));
+        ok(c.toDataURL('image/jpeg', mutu || 0.72));
       };
       img.onerror = () => { URL.revokeObjectURL(url); gagal(new Error('foto')); };
       img.src = url;
@@ -665,6 +967,82 @@
     } catch (e) {
       toast(t('Foto tidak bisa dibuka. Coba foto lain.'));
     }
+  }
+
+  // QRIS harus tetap tajam supaya bisa dipindai, jadi ukurannya lebih besar dari foto produk.
+  async function pilihQris(input) {
+    const file = input.files && input.files[0];
+    if (!file || modeStaff() || modeKunci()) return;
+    try {
+      const qris = await kecilkanFoto(file, 900, 0.9);
+      change(() => store.put('profil', Object.assign({}, profil(), { qris }), 'profil'));
+      toast(t('Gambar QRIS tersimpan'));
+      render();
+    } catch (e) {
+      toast(t('Foto tidak bisa dibuka. Coba foto lain.'));
+    }
+  }
+
+  // Logo diperkecil ke 256 px; warnanya dibaca dari versi 64 px.
+  function bacaLogo(file) {
+    return new Promise((ok, gagal) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const skala = Math.min(1, 256 / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * skala);
+        c.height = Math.round(img.naturalHeight * skala);
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        const transparan = /png|webp|gif|svg/.test(file.type);
+        const logo = transparan ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9);
+        const k = document.createElement('canvas');
+        k.width = k.height = 64;
+        k.getContext('2d').drawImage(img, 0, 0, 64, 64);
+        URL.revokeObjectURL(url);
+        ok({ logo, palet: W.paletLogo(k.getContext('2d').getImageData(0, 0, 64, 64).data) });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); gagal(new Error('logo')); };
+      img.src = url;
+    });
+  }
+
+  async function pilihLogo(input) {
+    const file = input.files && input.files[0];
+    if (!file || modeStaff() || modeKunci()) return;
+    try {
+      const { logo, palet } = await bacaLogo(file);
+      change(() => store.put('profil', Object.assign({}, profil(), { logo, palet }), 'profil'));
+      toast(t('Logo tersimpan. Pilih warna aplikasi di bawahnya.'));
+      render();
+    } catch (e) {
+      toast(t('Foto tidak bisa dibuka. Coba foto lain.'));
+    }
+  }
+
+  function pilihWarnaUsaha(utama) {
+    const p = profil();
+    let warna = null;
+    if (utama) {
+      const lain = (p.palet || []).filter((h) => h !== utama);
+      const cocok = W.pilihWarna([utama].concat(lain));
+      warna = { utama, aksen: cocok && cocok.utama === utama ? cocok.aksen : null };
+    }
+    change(() => store.put('profil', Object.assign({}, p, { warna }), 'profil'));
+    render();
+  }
+
+  function bukaQris() {
+    const q = usaha().qris;
+    if (!q) return;
+    const total = isiKeranjang().reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
+    dialog.innerHTML = `<div class="stack" id="qrisKasir">
+      <div class="row"><h3>${t('Bayar dengan QRIS')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      ${total ? `<div class="row"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>` : ''}
+      <img class="qris-gambar besar" src="${esc(q)}" alt="QRIS">
+      <div class="small muted">${t('Minta pembeli memindai kode ini, lalu cek notifikasi pembayaran masuk sebelum menyimpan penjualan.')}</div></div>`;
+    if (!dialog.open) dialog.showModal();
   }
 
   // Data produk dari isian form (belum disimpan).
@@ -859,16 +1237,25 @@
       waktu: w,
       items: trx.data.items.map((i) => ({ nama: i.nama, rinci: `${angka.format(i.qty)} × ${rp(i.harga)}`, jumlah: rp(i.qty * i.harga) })),
       total: rp(trx.data.total),
-      bayar: rp(bayar),
-      kembali: rp(Math.max(0, bayar - trx.data.total)),
+      rincian: rincianBayar(trx.data, bayar),
     };
+  }
+
+  // Baris di bawah total struk, sesuai cara bayar.
+  function rincianBayar(d, bayar) {
+    if (d.metode === 'nanti') {
+      const sisa = P.sisaTagihan(d);
+      return [[t('Dibayar'), rp(d.total - sisa)], [sisa > 0 ? t('Sisa tagihan') : t('Status'), sisa > 0 ? rp(sisa) : t('Lunas')]];
+    }
+    if (d.metode === 'qris') return [[t('Bayar (QRIS)'), rp(d.total)]];
+    return [[t('Bayar'), rp(bayar)], [t('Kembali'), rp(Math.max(0, bayar - d.total))]];
   }
 
   function strukTeks(s) {
     return [
       `*${s.judul}*`, s.kontak, s.waktu, '',
       ...s.items.map((i) => `${i.nama}\n  ${i.rinci} = ${i.jumlah}`), '',
-      `*${t('Total')}: ${s.total}*`, `${t('Bayar')}: ${s.bayar}`, `${t('Kembali')}: ${s.kembali}`, '', t('Terima kasih!'),
+      `*${t('Total')}: ${s.total}*`, ...s.rincian.map(([l, v]) => `${l}: ${v}`), '', t('Terima kasih!'),
     ].filter((x, i) => x !== '' || i > 2).join('\n');
   }
 
@@ -885,11 +1272,13 @@
     c.height = tinggi;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, tinggi);
-    ctx.fillStyle = '#fecb10';
+    const tm = temaUsaha();
+    const navy = tm ? tm.terang['--navy'] : '#0a2a6e';
+    ctx.fillStyle = tm ? navy : '#fecb10';
     ctx.fillRect(0, 0, W, 12);
     let y = 80;
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#0a2a6e';
+    ctx.fillStyle = navy;
     ctx.font = judulFont;
     ctx.fillText(s.judul, W / 2, y, W - pad * 2);
     ctx.fillStyle = '#5d6a88';
@@ -925,7 +1314,7 @@
     y += 52;
     const baris = (label, nilai, besar) => {
       ctx.textAlign = 'left';
-      ctx.fillStyle = besar ? '#0a2a6e' : '#5d6a88';
+      ctx.fillStyle = besar ? navy : '#5d6a88';
       ctx.font = font(besar ? 30 : 22, besar);
       ctx.fillText(label, pad, y);
       ctx.textAlign = 'right';
@@ -933,11 +1322,10 @@
       y += besar ? 44 : 34;
     };
     baris(t('Total'), s.total, true);
-    baris(t('Bayar'), s.bayar);
-    baris(t('Kembali'), s.kembali);
+    s.rincian.forEach(([l, v]) => baris(l, v));
     y += 16;
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#0a2a6e';
+    ctx.fillStyle = navy;
     ctx.font = font(24, true);
     ctx.fillText(t('Terima kasih!'), W / 2, y);
     return c;
@@ -992,7 +1380,13 @@
       items: items.map((x) => ({ produkId: x.rec.id, nama: x.rec.data.nama, qty: x.qty, harga: x.rec.data.harga })),
     };
     const total = jual.items.reduce((s, i) => s + i.harga * i.qty, 0);
-    jual.bayar = num(ui.bayar) || total;
+    jual.metode = ui.metode;
+    jual.bayar = ui.metode === 'tunai' ? num(ui.bayar) || total : ui.metode === 'qris' ? total : 0;
+    if (ui.metode === 'nanti') {
+      const nama = ui.pelanggan.nama.trim();
+      if (!nama) { toast(t('Isi nama pembeli dulu')); $('#pelangganNama') && $('#pelangganNama').focus(); return; }
+      jual.pelanggan = { nama, wa: ui.pelanggan.wa.trim() };
+    }
     if (modeStaff()) {
       // Staff tidak tahu modal; laba dihitung di HP owner saat penjualan ini diambil.
       Object.assign(jual, { id: KelolaStore.uuid(), total });
@@ -1007,8 +1401,10 @@
     }
     ui.cart = {};
     ui.bayar = '';
+    ui.metode = 'tunai';
+    ui.pelanggan = { nama: '', wa: '' };
     render();
-    toast(t('Penjualan {total} tersimpan', { total: rp(total) }));
+    toast(t(jual.metode === 'nanti' ? 'Tagihan {total} tersimpan' : 'Penjualan {total} tersimpan', { total: rp(total) }));
   }
 
   function batalTransaksi(id) {
@@ -1018,7 +1414,17 @@
     render();
   }
 
+  document.addEventListener('pointerover', (e) => {
+    const g = e.target.closest && e.target.closest('#grafik [data-gi]');
+    if (g) tunjukGrafik(g);
+  });
+  document.addEventListener('pointerleave', (e) => {
+    if (e.target.id === 'grafik' && $('#grafikTip')) { $('#grafikTip').hidden = true; $$('#grafik .sentuh.aktif').forEach((x) => x.classList.remove('aktif')); }
+  }, true);
+
   document.addEventListener('click', (e) => {
+    const g = e.target.closest('#grafik [data-gi]');
+    if (g) { tunjukGrafik(g); return; }
     const go = e.target.closest('[data-go]');
     if (go) {
       ui.view = go.dataset.go;
@@ -1104,8 +1510,31 @@
       case 'simpan-penjualan': simpanPenjualan(); break;
       case 'batal-trx': batalTransaksi(id); break;
       case 'periode': ui.periode = el.dataset.p; render(); break;
+      case 'qris': bukaQris(); break;
+      case 'warna': if (!modeStaff() && !modeKunci()) pilihWarnaUsaha(el.dataset.w); break;
+      case 'hapus-logo': {
+        if (modeStaff() || modeKunci()) break;
+        const p = Object.assign({}, profil());
+        delete p.logo; delete p.palet; p.warna = null;
+        change(() => store.put('profil', p, 'profil'));
+        render();
+        break;
+      }
+      case 'metode': ui.metode = el.dataset.m; render(); break;
+      case 'tagih': bukaTagih(id); break;
+      case 'tagih-qris': bagikanQris(); break;
+      case 'catat-bayar': bukaCatatBayar(id); break;
+      case 'metode-lunas': $$('#formLunas [data-act=metode-lunas]').forEach((b) => b.setAttribute('aria-pressed', b === el)); $('#formLunas').metode.value = el.dataset.m; break;
+      case 'hapus-qris': {
+        if (modeStaff() || modeKunci() || !confirm(t('Hapus gambar QRIS?'))) break;
+        const p = Object.assign({}, profil());
+        delete p.qris;
+        change(() => store.put('profil', p, 'profil'));
+        render();
+        break;
+      }
       case 'simpan-profil':
-        change(() => store.put('profil', { namaUsaha: $('#namaUsahaInput').value.trim(), kontak: $('#kontakUsahaInput').value.trim() }, 'profil'));
+        change(() => store.put('profil', Object.assign({}, profil(), { namaUsaha: $('#namaUsahaInput').value.trim(), kontak: $('#kontakUsahaInput').value.trim() }), 'profil'));
         render();
         toast(t('Profil tersimpan'));
         break;
@@ -1119,6 +1548,14 @@
   });
 
   document.addEventListener('input', (e) => {
+    if (e.target.id === 'pelangganNama' || e.target.id === 'pelangganWa') {
+      ui.pelanggan[e.target.id === 'pelangganNama' ? 'nama' : 'wa'] = e.target.value;
+      // Isi nomor WA otomatis kalau nama pelanggan sudah dikenal.
+      if (e.target.id === 'pelangganNama' && !modeStaff()) {
+        const p = daftarPelanggan().find((x) => x.nama.toLowerCase() === e.target.value.trim().toLowerCase());
+        if (p && p.wa && !ui.pelanggan.wa) { ui.pelanggan.wa = p.wa; $('#pelangganWa').value = p.wa; }
+      }
+    }
     if (e.target.id === 'bayar') {
       ui.bayar = e.target.value;
       const total = isiKeranjang().reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
@@ -1135,7 +1572,15 @@
   document.addEventListener('change', (e) => {
     if (e.target.matches('[data-foto]')) { pilihFoto(e.target); return; }
     if (e.target.form && e.target.form.id === 'formProduk') hitungForm();
+    if (e.target.dataset.tanggal && e.target.value) { ui[e.target.dataset.tanggal] = e.target.value; render(); }
+    if (e.target.matches('[data-qris]')) pilihQris(e.target);
+    if (e.target.matches('[data-logo]')) pilihLogo(e.target);
   });
+
+  // Bagian Akun yang dilipat: ingat mana yang terbuka supaya tidak tertutup lagi saat tampilan diperbarui.
+  document.addEventListener('toggle', (e) => {
+    if (e.target.matches && e.target.matches('details[data-lipat]')) ui.lipat[e.target.dataset.lipat] = e.target.open;
+  }, true);
 
   document.addEventListener('submit', async (e) => {
     const f = e.target;
@@ -1148,6 +1593,18 @@
       dialog.close();
       render();
       toast(t('Produk tersimpan'));
+    }
+    if (f.id === 'formLunas') {
+      e.preventDefault();
+      const id = f.trxId.value;
+      const jumlah = Math.min(num(f.jumlah.value), P.sisaTagihan((store.get(id) || {}).data));
+      if (!(jumlah > 0)) return;
+      let rec;
+      change(() => { rec = P.catatBayar(store, id, { waktu: new Date().toISOString(), jumlah, metode: f.metode.value }); });
+      dialog.close();
+      render();
+      toast(rec && rec.data.lunas ? t('Tagihan lunas') : t('Pembayaran {jumlah} dicatat', { jumlah: rp(jumlah) }));
+      return;
     }
     if (f.id === 'formBahan') {
       e.preventDefault();

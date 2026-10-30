@@ -15,7 +15,8 @@
     });
   }
 
-  // jual = { id?, waktu, items: [{ produkId, nama, qty, harga }], bayar, staff? }
+  // jual = { id?, waktu, items: [{ produkId, nama, qty, harga }], bayar, staff?, metode?, pelanggan? }
+  // metode: 'tunai' (bawaan), 'qris', atau 'nanti' (belum dibayar, jadi tagihan).
   // Modal diambil dari data produk saat ini, jadi staff tidak perlu tahu modal.
   function catatPenjualan(store, H, jual) {
     const cari = (id) => { const r = store.get(id); return r ? r.data : null; };
@@ -27,11 +28,47 @@
     const total = items.reduce((s, i) => s + i.harga * i.qty, 0);
     const laba = items.reduce((s, i) => s + (i.harga - i.modal) * i.qty, 0);
     const potong = H.potonganKeranjang(cart, cari);
-    const data = { waktu: jual.waktu, items, total, laba, bayar: jual.bayar || total, potong };
+    const metode = METODE.includes(jual.metode) ? jual.metode : 'tunai';
+    const data = { waktu: jual.waktu, items, total, laba, bayar: metode === 'nanti' ? 0 : jual.bayar || total, potong, metode };
     if (jual.staff) data.staff = jual.staff;
+    if (metode === 'nanti') {
+      const pl = jual.pelanggan || {};
+      data.pelanggan = { nama: String(pl.nama || '').trim() || 'Pelanggan', wa: String(pl.wa || '').trim() };
+      data.dibayar = [];
+      data.lunas = false;
+    }
     const rec = store.put('transaksi', data, jual.id);
     ubahStok(store, potong, -1);
     return rec;
+  }
+
+  const METODE = ['tunai', 'qris', 'nanti'];
+
+  // Sisa tagihan penjualan "bayar nanti"; 0 untuk penjualan yang langsung dibayar.
+  function sisaTagihan(d) {
+    if (!d || d.metode !== 'nanti') return 0;
+    const masuk = (d.dibayar || []).reduce((s, b) => s + (b.jumlah || 0), 0);
+    return Math.max(0, d.total - masuk);
+  }
+
+  // Catat pembayaran (boleh dicicil) untuk penjualan "bayar nanti".
+  function catatBayar(store, id, bayar) {
+    const trx = store.get(id);
+    if (!trx || trx.data.metode !== 'nanti' || !(bayar.jumlah > 0)) return null;
+    const dibayar = (trx.data.dibayar || []).concat([{
+      waktu: bayar.waktu, jumlah: bayar.jumlah, metode: bayar.metode === 'qris' ? 'qris' : 'tunai',
+    }]);
+    const d = Object.assign({}, trx.data, { dibayar });
+    d.lunas = sisaTagihan(d) <= 0;
+    return store.put('transaksi', d, id);
+  }
+
+  // Nomor WhatsApp untuk tautan wa.me: hanya angka, diawali kode negara 62.
+  function nomorWa(nomor) {
+    let n = String(nomor || '').replace(/\D/g, '');
+    if (n.startsWith('0')) n = '62' + n.slice(1);
+    else if (n.startsWith('8')) n = '62' + n;
+    return n.length >= 9 ? n : '';
   }
 
   function batalPenjualan(store, id) {
@@ -61,6 +98,8 @@
         waktu: d.waktu || row.created_at,
         items: (d.items || []).map((i) => ({ produkId: i.produkId, nama: i.nama, qty: Number(i.qty) || 0, harga: Number(i.harga) || 0 })),
         bayar: d.bayar,
+        metode: d.metode,
+        pelanggan: d.pelanggan,
         staff: namaStaff(row.staff_id) || 'Staff',
       });
       n += 1;
@@ -68,7 +107,7 @@
     return n;
   }
 
-  const api = { ubahStok, catatPenjualan, batalPenjualan, olahPenjualanStaff };
+  const api = { ubahStok, catatPenjualan, batalPenjualan, olahPenjualanStaff, sisaTagihan, catatBayar, nomorWa };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KelolaPenjualan = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
