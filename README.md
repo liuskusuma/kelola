@@ -8,6 +8,7 @@ Bisa dipasang di layar utama HP (iPhone dan Android) dan tetap jalan tanpa inter
 - **Produk + kalkulator harga jual.** Modal per satuan bisa diisi sendiri, dihitung dari resep, atau dari isi paket. Kelola memberi tiga saran harga jual (hemat, standar, premium) dari target margin, dibulatkan ke Rp500.
 - **Bahan baku dan resep.** Catat bahan dengan harga beli per kemasan (misalnya gula Rp18.000 per 1.000 gram). Resep berisi bahan, jumlah yang dipakai, hasil jadi, dan biaya lain seperti gas atau kemasan. Modal per porsi dihitung otomatis.
 - **Peringatan harga bahan.** Kalau harga bahan diubah, Kelola menunjukkan produk yang modalnya ikut berubah dan menyarankan harga jual baru yang menjaga margin lama.
+- **Harga pasar sebagai pembanding.** Di tab Bahan baku, tombol **Catat harga pasar** membuka tautan ke Panel Harga Badan Pangan, PIHPS Bank Indonesia, dan SP2KP Kemendag. Harga pasar yang dicatat dibandingkan dengan harga beli. Kalau bedanya 10% atau lebih, Kelola memberi peringatan (juga di tab Produk) dan tombol **Pakai harga pasar** yang langsung menunjukkan produk mana yang modalnya berubah. Harga pasar yang lebih dari 30 hari diberi pengingat untuk dicek lagi. Situs-situs itu tidak bisa dibaca otomatis (API-nya tertutup untuk aplikasi luar dan memakai reCAPTCHA), jadi harganya diisi sendiri.
 - **Paket.** Gabungkan beberapa produk jadi satu harga; modalnya jumlah modal isinya.
 - **Stok otomatis.** Produk yang stoknya dihitung berkurang saat terjual. Produk resep tanpa stok (dibuat saat dipesan) mengurangi stok bahannya. Tombol **Produksi** menambah stok produk jadi dan mengurangi bahan.
 - **Kasir.** Ketuk produk untuk menambah ke keranjang, isi uang diterima, kembalian dihitung otomatis.
@@ -59,6 +60,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `js/app.js` | Layar Kasir, Produk, Laporan, Akun, serta login |
 | `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
 | `js/penjualan.js` | Mencatat dan membatalkan penjualan, serta mengolah penjualan dari akun staff |
+| `js/acuan.js` | Perbandingan harga beli bahan dengan harga pasar yang dicatat |
 | `js/staff.js` | Undangan staff, data kasir di HP staff, dan PIN mode kasir |
 | `js/bahasa.js` | Terjemahan Inggris dan pengaturan bahasa/tampilan per perangkat |
 | `js/store.js` | Penyimpanan lokal (localStorage) |

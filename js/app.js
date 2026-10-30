@@ -5,6 +5,7 @@
   const H = KelolaHitung;
   const P = KelolaPenjualan;
   const S = KelolaStaff;
+  const A = KelolaAcuan;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
 
@@ -90,6 +91,11 @@
   // Produk yang modalnya berubah karena harga bahan berubah sejak produk terakhir disimpan.
   function produkBerubah() {
     return produkList().filter((p) => pakaiResep(p.data) && Math.abs(modalOf(p) - (p.data.modal || 0)) >= 1);
+  }
+
+  // Bahan yang harga belinya beda jauh dari harga pasar yang dicatat.
+  function bahanPerluCek() {
+    return bahanList().filter((b) => { const c = A.bandingkan(b.data); return c && c.perluCek; });
   }
 
   function profil() {
@@ -282,6 +288,12 @@
           <div class="small muted">${t('Modal {n} produk ikut berubah. Cek apakah harga jualnya masih menguntungkan.', { n: berubah.length })}</div></div>
           <button class="btn primary block" data-act="dampak">${t('Cek harga jual')}</button></div>`
       : '';
+    const cekPasar = bahanPerluCek().length;
+    const pasar = cekPasar
+      ? `<div class="card stack peringatan"><div><span class="label">${t('Harga bahan beda jauh dari pasar')}</span>
+          <div class="small muted">${t('Harga beli {n} bahan beda lebih dari {b}% dari harga pasar yang Anda catat. Cek supaya HPP tetap benar.', { n: cekPasar, b: A.BATAS })}</div></div>
+          <button class="btn block" data-act="produk-tab" data-t="bahan">${t('Lihat bahan baku')}</button></div>`
+      : '';
     const list = produk.length
       ? `<ul class="list">${produk.map((p) => {
           const d = p.data;
@@ -299,7 +311,7 @@
             <div class="aksi">${produksi}<button class="btn kecil" data-act="produk-ubah" data-id="${p.id}">${t('Ubah')}</button></div></li>`;
         }).join('')}</ul>`
       : `<div class="empty">${t('Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.')}</div>`;
-    return `${peringatan}<div class="group-title"><span>${t('Daftar produk')}</span><button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></div>
+    return `${peringatan}${pasar}<div class="group-title"><span>${t('Daftar produk')}</span><button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></div>
       <div class="card">${list}</div>
       <div class="foot">${t('Modal bisa diisi sendiri, dihitung dari resep bahan baku, atau dari isi paket. Harga jual disarankan dari target margin.')}</div>`;
   }
@@ -312,13 +324,78 @@
           const stok = d.stok != null ? ` · ${t('stok')} ${angka.format(d.stok)} ${satuanBahan(d)}` : '';
           const tipis = d.stok != null && d.stok <= 0 ? `<div class="small err">${t('Stok habis')}</div>` : '';
           return `<li class="row"><div><div class="nama">${esc(d.nama)}</div>
-            <div class="small muted">${rp(d.harga)} / ${angka.format(d.isi)} ${satuanBahan(d)} · ${rp(H.hargaSatuan(d))} ${t('per')} ${satuanBahan(d)}${stok}</div>${tipis}</div>
+            <div class="small muted">${rp(d.harga)} / ${angka.format(d.isi)} ${satuanBahan(d)} · ${rp(H.hargaSatuan(d))} ${t('per')} ${satuanBahan(d)}${stok}</div>${tipis}${teksAcuan(b)}</div>
             <button class="btn kecil" data-act="bahan-ubah" data-id="${b.id}">${t('Ubah')}</button></li>`;
         }).join('')}</ul>`
       : `<div class="empty">${t('Belum ada bahan baku. Catat bahan dan harga belinya supaya modal produk dihitung otomatis dari resep.')}</div>`;
-    return `<div class="group-title"><span>${t('Bahan baku')}</span><button class="link tambah" data-act="bahan-baru">${t('+ Tambah bahan')}</button></div>
+    return `${bahan.length ? infoAcuan() : ''}<div class="group-title"><span>${t('Bahan baku')}</span><button class="link tambah" data-act="bahan-baru">${t('+ Tambah bahan')}</button></div>
       <div class="card">${list}</div>
       <div class="foot">${t('Kalau harga bahan naik, ubah harganya di sini. Kelola akan menunjukkan produk mana yang modalnya ikut naik.')}</div>`;
+  }
+
+  // Situs resmi untuk melihat harga pasar harian.
+  const SITUS_HARGA = [
+    ['https://panelharga.badanpangan.go.id/', 'Panel Harga Bapanas'],
+    ['https://www.bi.go.id/hargapangan', 'PIHPS Bank Indonesia'],
+    ['https://sp2kp.kemendag.go.id/', 'SP2KP Kemendag'],
+  ];
+  const tautanSitus = () => SITUS_HARGA.map(([u, n]) => `<a class="link" href="${u}" target="_blank" rel="noopener">${n}</a>`).join(' · ');
+
+  function infoAcuan() {
+    const n = bahanPerluCek().length;
+    const judul = n
+      ? `<span class="label">${t('Harga bahan beda jauh dari pasar')}</span>
+         <div class="small muted">${t('Harga beli {n} bahan beda lebih dari {b}% dari harga pasar yang Anda catat. Cek supaya HPP tetap benar.', { n, b: A.BATAS })}</div>`
+      : `<span class="label">${t('Harga pasar')}</span>
+         <div class="small muted">${t('Bandingkan harga beli Anda dengan harga pasar supaya HPP tidak ketinggalan. Lihat harga harian di situs resmi, lalu catat di sini.')}</div>`;
+    return `<div class="card stack ${n ? 'peringatan' : ''}"><div>${judul}
+      <div class="small" style="margin-top:6px">${tautanSitus()}</div></div>
+      <button class="btn block" data-act="pasar-catat">${t('Catat harga pasar')}</button></div>`;
+  }
+
+  function kapanDicek(umur) {
+    if (umur == null) return '';
+    if (umur === 0) return t('dicek hari ini');
+    if (umur === 1) return t('dicek kemarin');
+    return t('dicek {n} hari lalu', { n: umur });
+  }
+
+  function teksSelisih(c) {
+    const s = Math.round(c.selisih);
+    if (!c.anda) return '';
+    if (Math.abs(s) < 3) return t('setara harga beli Anda');
+    return t(s > 0 ? '{n}% lebih mahal dari harga beli Anda' : '{n}% lebih murah dari harga beli Anda', { n: Math.abs(s) });
+  }
+
+  // Baris perbandingan harga beli dengan harga pasar di daftar bahan.
+  function teksAcuan(b) {
+    const c = A.bandingkan(b.data);
+    if (!c) return '';
+    const info = [`${t('Pasar')} ${rp(c.pasar)}`, kapanDicek(c.umur), teksSelisih(c)].filter(Boolean).join(' · ');
+    const saran = c.perluCek
+      ? `<div class="small warn">${t(c.selisih > 0
+          ? 'Harga pasar lebih mahal. Kalau harga beli Anda juga naik, perbarui supaya HPP benar.'
+          : 'Harga pasar lebih murah. Mungkin bisa belanja lebih hemat, atau perbarui harga beli Anda.')}</div>
+         <button class="btn kecil" style="margin-top:6px" data-act="acuan-pakai" data-id="${b.id}">${t('Pakai harga pasar')}</button>`
+      : c.lama ? `<div class="small muted">${t('Harga pasar sudah lebih dari {n} hari, cek lagi.', { n: A.LAMA })}</div>` : '';
+    return `<div class="small muted">${info}</div>${saran}`;
+  }
+
+  // Satu layar untuk mencatat harga pasar semua bahan sekaligus.
+  function bukaCatatPasar() {
+    const bahan = bahanList();
+    dialog.innerHTML = `<form id="formPasar" class="stack" method="dialog">
+      <div class="row"><h3>${t('Catat harga pasar')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="small muted">${t('Buka salah satu situs di bawah, cari harga di daerah Anda, lalu isi harga untuk kemasan yang sama dengan harga beli Anda. Kosongkan kalau tidak ada.')}</div>
+      <div class="small">${tautanSitus()}</div>
+      ${bahan.map((b) => {
+        const d = b.data;
+        return `<label class="field"><span>${esc(d.nama)} · ${angka.format(d.isi)} ${satuanBahan(d)} (${t('beli')} ${rp(d.harga)})</span>
+          <input name="pasar" data-id="${b.id}" type="number" inputmode="decimal" min="0" step="any" value="${d.acuan && d.acuan.harga ? esc(d.acuan.harga) : ''}"></label>`;
+      }).join('')}
+      <button class="btn primary">${t('Simpan')}</button>
+    </form>`;
+    if (!dialog.open) dialog.showModal();
   }
 
   function rentang(periode) {
@@ -736,6 +813,8 @@
       </div>
       <label class="field"><span>${t('Harga beli per kemasan (Rp)')}</span><input name="harga" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.harga)}"></label>
       <div class="small muted" id="hargaSatuan"></div>
+      <label class="field"><span>${t('Harga pasar per kemasan (Rp, boleh kosong)')}</span><input name="pasar" type="number" inputmode="decimal" min="0" step="any" value="${d.acuan && d.acuan.harga ? esc(d.acuan.harga) : ''}"></label>
+      <div class="small muted" id="infoPasar"></div>
       <label class="field"><span>${t('Stok (kosongkan jika tidak dihitung)')}</span><input name="stok" type="number" inputmode="decimal" step="any" value="${d.stok == null ? '' : esc(d.stok)}"></label>
       <div class="row">
         ${rec ? `<button type="button" class="btn danger" data-act="bahan-hapus" data-id="${rec.id}">${t('Hapus')}</button>` : '<span></span>'}
@@ -754,6 +833,8 @@
     $('#hargaSatuan').textContent = per
       ? t('Harga per {satuan}: {harga}', { satuan: f.satuan.value || t('satuan'), harga: rupiah.format(per) }) + (per < 1 ? ` (${angka.format(per)})` : '')
       : '';
+    const c = A.bandingkan({ harga: num(f.harga.value), acuan: { harga: num(f.pasar.value) } });
+    $('#infoPasar').textContent = c && c.anda ? `${t('Harga pasar')} ${teksSelisih(c)}.` : '';
   }
 
   // ---------- Dampak perubahan harga bahan ----------
@@ -1057,6 +1138,15 @@
         break;
       case 'bahan-baru': bukaFormBahan(); break;
       case 'bahan-ubah': bukaFormBahan(id); break;
+      case 'pasar-catat': bukaCatatPasar(); break;
+      case 'acuan-pakai': {
+        const b = store.get(id);
+        if (!b || !b.data.acuan) break;
+        change(() => store.put('bahan', Object.assign({}, b.data, { harga: b.data.acuan.harga }), id));
+        toast(t('Harga beli diperbarui'));
+        if (produkBerubah().length) { render(); bukaDampak(); } else render();
+        break;
+      }
       case 'bahan-hapus': {
         const dipakai = produkList().filter((p) => p.data.resep && (p.data.resep.items || []).some((i) => i.bahanId === id));
         const tanya = dipakai.length
@@ -1129,6 +1219,7 @@
     if (form === 'formProduk') hitungForm();
     if (form === 'formBahan') hitungBahan();
     if (form === 'formProduksi') hitungProduksi();
+    if (form === 'formPasar') e.target.dataset.ubah = '1';
   });
 
   // Pilihan di <select> dan file foto memicu `change`, bukan `input`, di sebagian browser.
@@ -1149,6 +1240,24 @@
       render();
       toast(t('Produk tersimpan'));
     }
+    if (f.id === 'formPasar') {
+      e.preventDefault();
+      let n = 0;
+      $$('input[name=pasar]', f).forEach((el) => {
+        const b = store.get(el.dataset.id);
+        if (!b) return;
+        const lama = b.data.acuan || null;
+        const baru = A.perbarui(lama, num(el.value), !!el.dataset.ubah);
+        if (baru === lama || JSON.stringify(baru) === JSON.stringify(lama)) return;
+        store.put('bahan', Object.assign({}, b.data, { acuan: baru }), b.id);
+        n++;
+      });
+      if (n) scheduleSync();
+      dialog.close();
+      render();
+      toast(t('Harga pasar tersimpan'));
+      return;
+    }
     if (f.id === 'formBahan') {
       e.preventDefault();
       const id = f.bahanId.value;
@@ -1160,6 +1269,8 @@
         harga: num(f.harga.value),
         stok: stok === '' ? null : num(stok),
       };
+      const lama = id && store.get(id) ? store.get(id).data.acuan : null;
+      d.acuan = A.perbarui(lama, num(f.pasar.value), false);
       change(() => store.put('bahan', d, id || undefined));
       toast(t('Bahan tersimpan'));
       if (produkBerubah().length) {
