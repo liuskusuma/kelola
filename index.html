@@ -217,8 +217,10 @@
       box-shadow: var(--inset-sm); outline: none;
     }
     input::placeholder { color: var(--faint); }
+    input[type="date"] { min-width: 0; -webkit-appearance: none; appearance: none; padding: 11px 10px; font-size: 15px; }
+    input[type="date"]::-webkit-date-and-time-value { text-align: left; }
     input:focus-visible, select:focus-visible { box-shadow: var(--inset-sm), 0 0 0 2px var(--primary); }
-    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
     .hint { background: var(--well); box-shadow: var(--inset-sm); border-radius: 20px; padding: 14px 16px; font-size: 14px; }
     .total { font-family: var(--f-display); font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
