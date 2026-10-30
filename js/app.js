@@ -659,7 +659,8 @@
     }
     if (ui.metode === 'nanti') {
       const kenal = modeStaff() ? [] : daftarPelanggan();
-      return `<div class="two" style="margin-top:14px">
+      // Satu kolom: label WhatsApp panjang dan membuat dua isian tidak sejajar kalau berdampingan.
+      return `<div class="stack" style="margin-top:14px">
           <label class="field"><span>${t('Nama pembeli')}</span><input id="pelangganNama" list="daftarPelanggan" autocomplete="off" value="${esc(ui.pelanggan.nama)}" placeholder="${t('Contoh: Bu Ani')}"></label>
           <label class="field"><span>${t('No. WhatsApp (boleh kosong)')}</span><input id="pelangganWa" type="tel" inputmode="tel" value="${esc(ui.pelanggan.wa)}" placeholder="0812…"></label>
         </div>
