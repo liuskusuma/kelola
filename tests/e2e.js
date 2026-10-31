@@ -20,6 +20,8 @@ const staff = [];
 const undangan = new Map();
 const penjualan = new Map();
 const log = [];
+const refresh = new Map(); // refresh token -> user id
+let nomorRefresh = 0;
 const norm = (s) => s.replace(/\u00a0/g, ' ');
 // Bagian di halaman Akun bisa dibuka-tutup; buka semuanya supaya isiannya bisa diklik.
 const bukaLipat = (page) => page.evaluate(() => {
@@ -40,9 +42,23 @@ async function mock(route) {
   const eq = (k) => { const v = url.searchParams.get(k); return v ? v.replace(/^eq\./, '') : null; };
   if (url.pathname === '/auth/v1/token') {
     const body = JSON.parse(req.postData());
-    const user = USERS.find((u) => u.email === body.email);
-    if (!user || body.password !== 'rahasia123') return route.fulfill({ status: 400, headers: cors, body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials', message: 'Invalid login credentials' }) });
-    return route.fulfill({ status: 200, headers: cors, body: JSON.stringify({ access_token: jwtUntuk(user), token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'r', user }) });
+    let user;
+    if (url.searchParams.get('grant_type') === 'refresh_token') {
+      // Refresh token sekali pakai, seperti Supabase.
+      user = USERS.find((u) => u.id === refresh.get(body.refresh_token));
+      refresh.delete(body.refresh_token);
+      if (!user) return route.fulfill({ status: 400, headers: cors, body: JSON.stringify({ error: 'invalid_grant', message: 'Invalid Refresh Token' }) });
+    } else {
+      user = USERS.find((u) => u.email === body.email);
+      if (!user || body.password !== 'rahasia123') return route.fulfill({ status: 400, headers: cors, body: JSON.stringify({ error: 'invalid_grant', error_description: 'Invalid login credentials', message: 'Invalid login credentials' }) });
+    }
+    const rt = 'r' + (++nomorRefresh);
+    refresh.set(rt, user.id);
+    return route.fulfill({ status: 200, headers: cors, body: JSON.stringify({ access_token: jwtUntuk(user), token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: rt, user }) });
+  }
+  if (url.pathname === '/auth/v1/user') {
+    const user = USERS.find((u) => u.id === uid);
+    return user ? json(200, user) : json(401, { message: 'invalid JWT' });
   }
   if (url.pathname === '/auth/v1/logout') return route.fulfill({ status: 204, headers: cors });
   if (url.pathname === '/rest/v1/records' && req.method() === 'GET') {
@@ -631,6 +647,9 @@ async function tab(ctx, errors) {
   await p.close();
   await p2.click('nav >> text=Akun');
   await bukaLipat(p2);
+  // Face ID aktif untuk akun pertama: nanti bisa kembali ke akun ini tanpa kata sandi.
+  await p2.click('#faceId [data-act=faceid-aktifkan]');
+  await p2.waitForSelector('#faceId .msg.ok');
   assert.ok(norm(await p2.textContent('#akunHp')).includes(USER.email));
   await p2.click('#akunHp >> text=+ Tambah akun lain');
   await p2.waitForSelector('#formGantiAkun');
@@ -653,14 +672,26 @@ async function tab(ctx, errors) {
   assert.ok(![...rows.values()].some((r) => r.user_id === SARI.id && r.kind === 'produk'), 'produk akun lain tidak ikut');
   // Kembali ke akun pertama: produknya muncul lagi.
   assert.ok(norm(await p2.textContent('#akunHp')).includes('Kedai Sari'));
+  assert.ok(norm(await p2.textContent(`#akunHp li:has-text("${USER.email}")`)).includes('Face ID'));
+  // Wajah tidak cocok: isian kata sandi akun itu yang tampil, akun Sari tetap aktif.
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });
   await p2.click(`#akunHp li:has-text("${USER.email}") >> text=Pindah`);
   await p2.waitForSelector('#formGantiAkun');
   assert.equal(await p2.inputValue('#formGantiAkun input[name=email]'), USER.email);
-  await p2.fill('#formGantiAkun input[name=password]', 'rahasia123');
-  await p2.click('#formGantiAkun button');
+  assert.ok(norm(await p2.textContent('#gerbang .msg.err')).includes('Face ID / sidik jari tidak berhasil'));
+  assert.equal(await p2.evaluate(() => Kelola.cloud.user.email), SARI.email);
+  // Coba lagi dari daftar akun, kali ini wajah cocok.
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: true });
+  await p2.click('#gerbang >> text=Kembali ke daftar akun');
+  await p2.click(`.akun-pilih button:has-text("${USER.email}")`);
+  await p2.waitForFunction((e) => Kelola.cloud.user && Kelola.cloud.user.email === e, USER.email);
   await p2.waitForSelector('nav.tabs');
+  assert.equal(await p2.textContent('#subjudul .peran'), 'OWNER');
   await p2.click('nav >> text=Produk');
   await p2.waitForSelector('text=Keripik pedas');
+  // Sesi yang sudah dipakai tidak disimpan lagi.
+  assert.ok(!(await p2.evaluate((id) => (JSON.parse(localStorage.getItem('kelola:faceid'))[id] || {}).sesi, USER.id)));
+  assert.ok(log.some((l) => l.startsWith('POST /auth/v1/token?grant_type=refresh_token')), 'pindah akun memakai sesi tersimpan, bukan kata sandi');
   // Layar awal menampilkan akun aktif dan daftar akun.
   await p2.close();
   const p3 = await tab(hp.ctx, hp.errors);

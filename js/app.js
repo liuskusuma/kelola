@@ -139,6 +139,20 @@
   // Disimpan per akun dan per perangkat. ui.faceIdBisa: null = belum dicek.
   const kunciFaceId = () => (cloud.user ? F.untuk(window.localStorage, cloud.user.id) : null);
   const faceIdAktif = () => !!kunciFaceId() && ui.faceIdBisa !== false;
+  // Sebelum pindah akun: simpan sesi akun ini kalau Face ID-nya aktif, supaya nanti bisa kembali tanpa kata sandi.
+  async function simpanSesiFaceId() {
+    if (!cloud.user || !kunciFaceId()) return;
+    try {
+      const { data } = await cloud.client.auth.getSession();
+      if (data.session && data.session.user.id === cloud.user.id) F.simpanSesi(window.localStorage, cloud.user.id, data.session);
+    } catch (e) { /* abaikan: pindah akun tetap jalan, kembali nanti pakai kata sandi */ }
+  }
+  // Akun di daftar HP ini yang bisa dibuka dengan Face ID (punya kunci dan sesi tersimpan).
+  function faceIdAkun(email) {
+    const a = daftarAkun().find((x) => x.email.toLowerCase() === String(email || '').toLowerCase());
+    const k = a && F.untuk(window.localStorage, a.id);
+    return k && k.sesi && ui.faceIdBisa !== false ? { akun: a, kunci: k } : null;
+  }
   async function cekFaceIdBisa() {
     const bisa = await F.bisa();
     if (bisa !== ui.faceIdBisa) { ui.faceIdBisa = bisa; renderAman(); }
@@ -319,7 +333,7 @@
     const g = ui.gerbang;
     const akun = daftarAkun();
     const aktif = (a) => cloud.user && a.id === cloud.user.id;
-    const ketAkun = (a) => `${esc(a.email)}${a.staff ? ' · ' + t('Staff') : ''}`;
+    const ketAkun = (a) => `${esc(a.email)}${a.staff ? ' · ' + t('Staff') : ''}${!aktif(a) && faceIdAkun(a.email) ? ' · Face ID' : ''}`;
     const kembaliAkun = ui.gantiAkun
       ? `<button type="button" class="kembali" data-act="batal-ganti-akun">← ${t('Kembali ke aplikasi')}</button>`
       : kembali('pilih', t('Kembali pilih mode'));
@@ -332,7 +346,7 @@
             ${aktif(a) ? `<span class="aktif small">● ${t('Aktif')}</span>` : '<span class="muted" aria-hidden="true">›</span>'}</button></li>`).join('')}</ul>
           <button type="button" class="btn block" data-act="gerbang" data-g="masuk-akun" data-email="">${t('+ Tambah akun lain')}</button>
         </div>
-        <div class="hint">${t('Data tiap akun (produk, penjualan, laporan) disimpan terpisah di HP ini. Pindah akun meminta kata sandi akun itu.')}</div>
+        <div class="hint">${t('Data tiap akun (produk, penjualan, laporan) disimpan terpisah di HP ini. Pindah akun meminta kata sandi akun itu, atau Face ID / sidik jari kalau sudah diaktifkan di akun itu.')}</div>
         ${kembaliAkun}`;
     } else if (g === 'masuk-akun') {
       isi = `${merek(t('Masuk ke akun lain'))}
@@ -529,6 +543,7 @@
     const tambah = !!cloud.user;
     try {
       if (tambah && navigator.onLine) await syncNow(false);
+      if (tambah) await simpanSesiFaceId();
       const { data, error } = await cloud.client.auth.signUp({ email, password: f.password.value, options: { emailRedirectTo: location.origin + location.pathname } });
       if (error) throw error;
       if (namaUsaha && tambah) ui.usahaBaru = { id: data.user && data.user.id, nama: namaUsaha };
@@ -585,16 +600,77 @@
         gagal(t('Masih ada {n} penjualan yang belum terkirim. Sambungkan internet sampai terkirim, lalu coba lagi.', { n: kasirStaff.antrian.length }));
         return;
       }
+      await simpanSesiFaceId();
     }
     try {
       const { data, error } = await cloud.client.auth.signInWithPassword({ email, password });
       if (error) { gagal(pesanAuth(error)); return; }
+      F.simpanSesi(window.localStorage, data.user.id, null);
       await simpanSandi(email, password);
       await setUser(data.user);
       masukMode('owner');
     } catch (err) {
       gagal(pesanAuth(err));
     }
+  }
+
+  // Pindah ke akun lain dengan Face ID, memakai sesi akun itu yang tersimpan di HP ini.
+  // Kalau gagal, isian kata sandi akun itu yang tampil. Mengembalikan false kalau akun itu belum memakai Face ID.
+  async function pindahFaceId(email) {
+    const f = faceIdAkun(email);
+    if (!f) return false;
+    if (faceIdJalan) return true;
+    const gagal = (text) => {
+      ui.authEmail = f.akun.email;
+      ui.gerbang = ui.gerbangAsal = 'masuk-akun';
+      ui.gerbangMsg = { type: 'err', text };
+      render();
+      window.scrollTo(0, 0);
+    };
+    faceIdJalan = true;
+    let ok = false;
+    try { ok = await F.cek(f.kunci); } catch (e) { ok = false; }
+    faceIdJalan = false;
+    if (!ok) { gagal(t('Face ID / sidik jari tidak berhasil. Coba lagi, atau masuk dengan kata sandi.')); return true; }
+    if (!navigator.onLine) { gagal(t('Pindah akun butuh internet. Sambungkan internet, lalu coba lagi.')); return true; }
+    if (cloud.user) {
+      await syncNow(false);
+      if (modeStaff() && kasirStaff.antrian.length) {
+        gagal(t('Masih ada {n} penjualan yang belum terkirim. Sambungkan internet sampai terkirim, lalu coba lagi.', { n: kasirStaff.antrian.length }));
+        return true;
+      }
+    }
+    // Perbarui sesi tersimpan langsung ke Supabase (bukan lewat supabase-js), supaya kalau sesi itu
+    // sudah tidak berlaku, akun yang sedang aktif tidak ikut keluar.
+    let baru;
+    try {
+      const res = await fetch(config.supabaseUrl + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + config.supabaseAnonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: f.kunci.sesi.refresh_token }),
+      });
+      if (!res.ok) {
+        F.simpanSesi(window.localStorage, f.akun.id, null);
+        gagal(t('Akun ini perlu kata sandi sekali lagi. Setelah itu, pindah ke akun ini bisa memakai Face ID / sidik jari lagi.'));
+        return true;
+      }
+      baru = await res.json();
+    } catch (e) {
+      gagal(t('Pindah akun butuh internet. Sambungkan internet, lalu coba lagi.'));
+      return true;
+    }
+    await simpanSesiFaceId();
+    try {
+      const { data, error } = await cloud.client.auth.setSession({ access_token: baru.access_token, refresh_token: baru.refresh_token });
+      if (error || !data.user) throw error || new Error('sesi');
+      F.simpanSesi(window.localStorage, f.akun.id, null);
+      await setUser(data.user);
+      masukMode('owner');
+    } catch (e) {
+      F.simpanSesi(window.localStorage, f.akun.id, baru);
+      gagal(pesanAuth(e));
+    }
+    return true;
   }
 
   function renderBadge() {
@@ -1193,7 +1269,7 @@
       isi = `<div class="small muted">${t('HP atau browser ini belum mendukung Face ID / sidik jari untuk aplikasi web. Pastikan kunci layar HP (Face ID, sidik jari, atau PIN) sudah aktif.')}</div>`;
     } else if (kunci) {
       isi = `<div class="row"><b>${t('Aktif di HP ini')}</b><span class="aktif small">● ${t('Aktif')}</span></div>
-        <div class="small muted">${t('Saat membuka Kelola sebagai Owner, cukup pindai wajah atau sidik jari. Kata sandi tetap bisa dipakai kapan saja.')}</div>
+        <div class="small muted">${t('Saat membuka Kelola sebagai Owner, atau pindah kembali ke akun ini dari akun lain di HP ini, cukup pindai wajah atau sidik jari. Kata sandi tetap bisa dipakai kapan saja.')}</div>
         <button class="btn block" data-act="faceid-matikan">${t('Matikan Face ID / sidik jari')}</button>`;
     } else {
       isi = `<div class="small muted">${t('Masuk sebagai Owner tanpa mengetik kata sandi. Data wajah atau sidik jari tetap di HP ini dan tidak dikirim ke mana pun.')}</div>
@@ -1225,7 +1301,7 @@
     if (!cloudReady || !cloud.user) return '';
     const baris = daftarAkun().map((a) => {
       const aktif = a.id === cloud.user.id;
-      return `<li class="row akun-hp"><div class="t"><b>${esc(a.nama || a.email)}</b><div class="small muted">${esc(a.email)}${a.staff ? ' · ' + t('Staff') : ''}</div></div>
+      return `<li class="row akun-hp"><div class="t"><b>${esc(a.nama || a.email)}</b><div class="small muted">${esc(a.email)}${a.staff ? ' · ' + t('Staff') : ''}${!aktif && faceIdAkun(a.email) ? ' · Face ID' : ''}</div></div>
         ${aktif ? `<span class="aktif small">● ${t('Aktif')}</span>`
           : `<div class="aksi"><button class="btn kecil" data-act="ke-ganti-akun" data-email="${esc(a.email)}">${t('Pindah')}</button>
             <button class="link small danger" data-act="lupakan-akun" data-id="${esc(a.id)}">${t('Hapus dari HP')}</button></div>`}</li>`;
@@ -1233,7 +1309,7 @@
     return `<div class="group-title">${t('Akun di HP ini')}</div><div class="card stack" id="akunHp">
       <ul class="list">${baris}</ul>
       <button class="btn block" data-act="ke-ganti-akun" data-email="">${t('+ Tambah akun lain')}</button>
-      <div class="small muted">${t('Data tiap akun (produk, penjualan, laporan) disimpan terpisah di HP ini. Pindah akun meminta kata sandi akun itu.')}</div></div>`;
+      <div class="small muted">${t('Data tiap akun (produk, penjualan, laporan) disimpan terpisah di HP ini. Pindah akun meminta kata sandi akun itu, atau Face ID / sidik jari kalau sudah diaktifkan di akun itu.')}</div></div>`;
   }
 
   // Owner: logo di pojok kiri atas dan warna aplikasi dari logo.
@@ -2183,6 +2259,7 @@
         window.scrollTo(0, 0);
         break;
       case 'pilih-akun':
+        if (!(cloud.user && el.dataset.email === cloud.user.email) && faceIdAkun(el.dataset.email)) { pindahFaceId(el.dataset.email); break; }
         if (cloud.user && el.dataset.email === cloud.user.email) {
           if (ui.gantiAkun) { ui.gantiAkun = false; ui.gerbang = 'pilih'; } else ui.gerbang = 'owner';
         } else {
@@ -2195,6 +2272,7 @@
         break;
       case 'ke-ganti-akun':
         ui.gantiAkun = true;
+        if (faceIdAkun(el.dataset.email)) { pindahFaceId(el.dataset.email); break; }
         ui.authEmail = el.dataset.email || '';
         ui.gerbang = ui.gerbangAsal = 'masuk-akun';
         ui.gerbangMsg = null;

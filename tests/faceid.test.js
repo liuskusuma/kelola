@@ -22,6 +22,13 @@ test('kunci Face ID disimpan per akun dan bisa dihapus', () => {
   F.catat(s, 'b', { id: 'qrs', email: 'b@contoh.id' });
   assert.equal(F.untuk(s, 'a').id, 'xyz');
   assert.equal(F.untuk(s, null), null);
+  F.simpanSesi(s, 'a', { access_token: 'x', refresh_token: 'r1', user: {} });
+  assert.deepEqual(F.untuk(s, 'a').sesi, { access_token: 'x', refresh_token: 'r1' });
+  F.simpanSesi(s, 'a', null);
+  assert.equal(F.untuk(s, 'a').sesi, undefined);
+  assert.equal(F.untuk(s, 'a').id, 'xyz');
+  F.simpanSesi(s, 'zz', { refresh_token: 'r2' });
+  assert.equal(F.untuk(s, 'zz'), null, 'tanpa Face ID, sesi tidak disimpan');
   F.hapus(s, 'a');
   assert.equal(F.untuk(s, 'a'), null);
   assert.equal(F.untuk(s, 'b').id, 'qrs');
