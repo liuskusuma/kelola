@@ -1,11 +1,13 @@
 // Masuk dengan Face ID / sidik jari (passkey WebAuthn) di perangkat ini.
-// Ini pengganti mengetik kata sandi di layar awal: sesi Supabase tetap tersimpan di HP seperti
-// biasa, dan Face ID hanya membuktikan bahwa pemilik HP yang membuka mode Owner.
+// Ini pengganti mengetik kata sandi di layar awal dan saat pindah akun: sesi Supabase tetap
+// tersimpan di HP seperti biasa, dan Face ID hanya membuktikan bahwa pemilik HP yang membuka.
 // Data wajah atau sidik jari tidak pernah keluar dari HP; Kelola hanya menyimpan id kuncinya.
 (function (root) {
   'use strict';
 
-  const KEY = 'kelola:faceid'; // { [userId]: { id, email, dibuat } }
+  // { [userId]: { id, email, dibuat, sesi? } }. `sesi` = sesi Supabase akun itu yang disimpan saat
+  // pindah ke akun lain, supaya bisa kembali ke akun itu dengan Face ID tanpa kata sandi.
+  const KEY = 'kelola:faceid';
 
   function keB64(buf) {
     const b = new Uint8Array(buf);
@@ -47,6 +49,16 @@
     const d = baca(storage);
     d[userId] = kunci;
     tulis(storage, d);
+  }
+
+  // Simpan (atau hapus, kalau sesi null) sesi Supabase akun yang sedang ditinggalkan.
+  function simpanSesi(storage, userId, sesi) {
+    const k = untuk(storage, userId);
+    if (!k) return;
+    const baru = Object.assign({}, k);
+    if (sesi && sesi.refresh_token) baru.sesi = { access_token: sesi.access_token, refresh_token: sesi.refresh_token };
+    else delete baru.sesi;
+    catat(storage, userId, baru);
   }
 
   function hapus(storage, userId) {
@@ -102,7 +114,7 @@
     return !!cred && keB64(cred.rawId) === kunci.id && terverifikasi(cred.response.authenticatorData);
   }
 
-  const api = { KEY, keB64, dariB64, untuk, catat, hapus, terverifikasi, bisa, daftar, cek };
+  const api = { KEY, keB64, dariB64, untuk, catat, simpanSesi, hapus, terverifikasi, bisa, daftar, cek };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KelolaFaceId = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
