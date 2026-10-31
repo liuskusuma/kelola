@@ -386,6 +386,11 @@
     'Untuk keamanan, kata sandi diminta lagi setiap kali aplikasi ditutup lalu dibuka.': 'For security, your password is asked again every time the app is closed and reopened.',
 
     // Face ID / sidik jari
+    'Pakai Face ID / sidik jari untuk akun ini?': 'Use Face ID / fingerprint for this account?',
+    'Lain kali masuk atau pindah ke akun ini cukup dengan wajah atau sidik jari, tanpa kata sandi.': 'Next time, sign in or switch to this account with just your face or fingerprint, no password.',
+    'Nanti saja': 'Not now',
+    'Aktifkan': 'Turn on',
+    'Face ID / sidik jari aktif': 'Face ID / fingerprint is on',
     'Semua fitur: produk, laporan, staff, dan pengaturan. Masuk dengan Face ID / sidik jari.': 'All features: products, reports, staff and settings. Sign in with Face ID / fingerprint.',
     'Masuk dengan Face ID / sidik jari': 'Sign in with Face ID / fingerprint',
     'atau pakai kata sandi': 'or use your password',

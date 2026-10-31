@@ -660,6 +660,10 @@ async function tab(ctx, errors) {
   await p2.fill('#formGantiAkun input[name=password]', 'rahasia123');
   await p2.click('#formGantiAkun button');
   await p2.waitForSelector('nav.tabs');
+  // Baru masuk dengan kata sandi: Face ID ditawarkan untuk akun ini.
+  await p2.waitForSelector('#tawarFaceId');
+  await p2.click('#tawarFaceId [data-act=faceid-nanti]');
+  assert.equal(await p2.locator('#tawarFaceId').count(), 0);
   await p2.click('nav >> text=Produk');
   await p2.waitForSelector('text=Belum ada produk');
   await p2.click('nav >> text=Akun');
