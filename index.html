@@ -15,7 +15,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Kelola">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/logo.png" type="image/png">
+  <meta property="og:title" content="Kelola">
+  <meta property="og:image" content="https://liuskusuma.github.io/kelola/icons/icon-512.png">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <style>
     /* Huruf judul Exo 2 (sama seperti Bagi Rata), disimpan lokal supaya tetap tampil saat offline. */
@@ -406,6 +408,10 @@
     .pilih-akun { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
     .akun-pilih li + li, .akun-hp + .akun-hp { border-top: 1px solid var(--sep); }
     .aktif { color: var(--ok); font-weight: 700; white-space: nowrap; }
+    .btn-faceid { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+    .btn-faceid svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .atau { display: flex; align-items: center; gap: 10px; }
+    .atau::before, .atau::after { content: ''; flex: 1; border-top: 1px solid var(--sep); }
     .pilih-mode { display: flex; gap: 16px; align-items: center; text-align: left; width: 100%; border: 0; cursor: pointer; padding: 18px; border-radius: 26px; background: var(--cell); box-shadow: var(--raised); color: var(--fg); font: inherit; }
     .pilih-mode:active { box-shadow: var(--inset); }
     .pilih-mode .ik { flex: 0 0 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: var(--navy); }
@@ -424,7 +430,7 @@
 </head>
 <body>
   <header class="nav">
-    <img class="logo" src="icons/logo.svg" alt="">
+    <img class="logo" src="icons/logo.png" alt="">
     <div class="titles">
       <h1 id="judul">Kasir</h1>
       <p id="subjudul"></p>
@@ -468,6 +474,7 @@
   <script src="js/excel.js"></script>
   <script src="js/penjualan.js"></script>
   <script src="js/staff.js"></script>
+  <script src="js/faceid.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 </body>

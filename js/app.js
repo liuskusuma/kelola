@@ -7,6 +7,7 @@
   const W = KelolaWarna;
   const G = KelolaGrafik;
   const S = KelolaStaff;
+  const F = KelolaFaceId;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
 
@@ -52,6 +53,8 @@
     kunciMsg: null,
     gabungMsg: null,
     staff: { list: null, kode: null, msg: null, belumSiap: false, memuat: false }, // daftar staff untuk owner
+    faceIdBisa: null, // HP ini punya Face ID / sidik jari untuk web (null = belum dicek)
+    faceIdMsg: null,
   };
 
   const cloud = {
@@ -114,6 +117,7 @@
   // Hapus akun dari HP ini: data yang tersimpan untuk akun itu ikut dihapus (data di cloud tetap aman).
   function lupakanAkun(id) {
     simpanDaftarAkun(daftarAkun().filter((a) => a.id !== id));
+    F.hapus(window.localStorage, id);
     try {
       localStorage.removeItem(KelolaStore.arsipKey(id));
       if (S.bacaKasir(window.localStorage, id).ownerId) S.hapusKasir(window.localStorage);
@@ -130,6 +134,15 @@
     try { localStorage.setItem(KEY_SANDI, JSON.stringify({ email: email.toLowerCase(), garam, hash: await S.hashPin(password, garam) })); } catch (e) { /* abaikan */ }
   }
   const hapusSandi = () => { try { localStorage.removeItem(KEY_SANDI); } catch (e) { /* abaikan */ } };
+
+  // Face ID / sidik jari sebagai pengganti kata sandi owner di layar awal (lihat js/faceid.js).
+  // Disimpan per akun dan per perangkat. ui.faceIdBisa: null = belum dicek.
+  const kunciFaceId = () => (cloud.user ? F.untuk(window.localStorage, cloud.user.id) : null);
+  const faceIdAktif = () => !!kunciFaceId() && ui.faceIdBisa !== false;
+  async function cekFaceIdBisa() {
+    const bisa = await F.bisa();
+    if (bisa !== ui.faceIdBisa) { ui.faceIdBisa = bisa; renderAman(); }
+  }
 
   // ---------- Data ----------
 
@@ -229,7 +242,7 @@
       terapkanTema();
     }
     const logo = $('header.nav .logo');
-    const src = usaha().logo || 'icons/logo.svg';
+    const src = usaha().logo || 'icons/logo.png';
     if (logo.getAttribute('src') !== src) logo.setAttribute('src', src);
   }
 
@@ -289,6 +302,7 @@
   // ---------- Layar awal: pilih Owner atau Kasir / Staff ----------
 
   const IKON_OWNER = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+  const IKON_FACEID = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M9 9v1M15 9v1M12 9v4h-1M9 16c1.8 1.3 4.2 1.3 6 0"/></svg>';
   const IKON_KASIR = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h4M7 17h2M14 15h3"/></svg>';
 
   // Belum pernah ada akun di HP ini: boleh dipakai tanpa akun (data hanya di HP ini).
@@ -298,7 +312,7 @@
 
   function viewGerbang() {
     const u = usaha();
-    const merek = (sub) => `<div class="merek"><img src="${esc(u.logo || 'icons/logo.svg')}" alt="">
+    const merek = (sub) => `<div class="merek"><img src="${esc(u.logo || 'icons/logo.png')}" alt="">
       <h1>${esc(u.namaUsaha || 'Kelola')}</h1><p>${sub}</p></div>`;
     const kembali = (ke, teks) => `<button type="button" class="kembali" data-act="gerbang" data-g="${ke}">← ${teks}</button>`;
     const msg = pesan(ui.gerbangMsg);
@@ -336,20 +350,26 @@
     } else if (g === 'owner' || g === 'staff') {
       const owner = g === 'owner';
       const kunciEmail = owner && cloud.user;
+      const faceId = owner && faceIdAktif();
+      const ajakFaceId = owner && cloud.user && !faceId && ui.faceIdBisa;
       isi = `${merek(owner ? t('Masuk sebagai Owner') : t('Masuk dengan akun staff'))}
         <div class="card stack">
           ${owner ? '' : `<div class="small muted">${t('Minta kode undangan ke owner. Daftar dengan email Anda sendiri, lalu masukkan kodenya di menu Akun.')}</div>`}
           ${msg}
+          ${faceId ? `<button type="button" class="btn primary block btn-faceid" data-act="owner-faceid">${IKON_FACEID}${t('Masuk dengan Face ID / sidik jari')}</button>
+            <div class="atau small muted">${t('atau pakai kata sandi')}</div>` : ''}
           <form id="formGerbang" class="stack" data-tujuan="${owner ? 'owner' : 'kasir'}">
             <label class="field"><span>${t('Email')}</span><input name="email" type="email" autocomplete="email" required value="${esc(kunciEmail ? cloud.user.email : ui.authEmail)}" ${kunciEmail ? 'readonly' : ''}></label>
             <label class="field"><span>${t('Kata sandi')}</span><input name="password" type="password" autocomplete="current-password" required></label>
-            <button class="btn primary block">${t('Masuk')}</button>
+            <button class="btn ${faceId ? '' : 'primary'} block">${t('Masuk')}</button>
           </form>
           <button type="button" class="link" data-act="gerbang" data-g="lupa">${t('Lupa kata sandi?')}</button>
         </div>
         ${cloud.user ? '' : `<button type="button" class="btn block" data-act="gerbang" data-g="daftar">${t('Belum punya akun? Daftar')}</button>`}
         ${owner && tanpaAkunBoleh() ? `<button type="button" class="link tengah" data-act="tanpa-akun">${t('Pakai tanpa akun (data hanya di HP ini)')}</button>` : ''}
-        ${owner ? `<div class="hint">${t('Untuk keamanan, kata sandi diminta lagi setiap kali aplikasi ditutup lalu dibuka.')}</div>` : ''}
+        ${owner ? `<div class="hint">${faceId ? t('Untuk keamanan, Face ID / sidik jari atau kata sandi diminta lagi setiap kali aplikasi ditutup lalu dibuka.')
+          : t('Untuk keamanan, kata sandi diminta lagi setiap kali aplikasi ditutup lalu dibuka.')}
+          ${ajakFaceId ? `<br>${t('Tidak mau mengetik kata sandi? Setelah masuk, aktifkan Face ID / sidik jari di menu Akun.')}` : ''}</div>` : ''}
         ${kembali('pilih', t('Kembali pilih mode'))}`;
     } else if (g === 'daftar') {
       isi = `${merek(t('Daftar akun baru'))}
@@ -383,8 +403,11 @@
             <button type="button" class="btn kecil" data-act="gerbang" data-g="akun">${t('Ganti akun')}</button></div>`
         : akun.length ? `<button type="button" class="link tengah" data-act="gerbang" data-g="akun">${t('Pilih akun yang pernah masuk di HP ini')}</button>` : '';
       isi = `${merek(t('Buka sebagai'))}${chip}
-        <button type="button" class="pilih-mode" data-act="gerbang" data-g="owner"><span class="ik">${IKON_OWNER}</span>
-          <span><b>${t('Owner')}</b><span>${t('Semua fitur: produk, laporan, staff, dan pengaturan. Perlu kata sandi.')}</span></span></button>
+        ${faceIdAktif()
+          ? `<button type="button" class="pilih-mode" data-act="owner-faceid"><span class="ik">${IKON_OWNER}</span>
+          <span><b>${t('Owner')}</b><span>${t('Semua fitur: produk, laporan, staff, dan pengaturan. Masuk dengan Face ID / sidik jari.')}</span></span></button>`
+          : `<button type="button" class="pilih-mode" data-act="gerbang" data-g="owner"><span class="ik">${IKON_OWNER}</span>
+          <span><b>${t('Owner')}</b><span>${t('Semua fitur: produk, laporan, staff, dan pengaturan. Perlu kata sandi.')}</span></span></button>`}
         <button type="button" class="pilih-mode kasir" data-act="pilih-kasir"><span class="ik">${IKON_KASIR}</span>
           <span><b>${t('Kasir / Staff')}</b><span>${t('Langsung buka kasir untuk mencatat penjualan. Modal dan laba tidak tampil.')}</span></span></button>
         ${msg}
@@ -416,6 +439,22 @@
     ui.gerbangMsg = null;
     ui.view = 'kasir';
     ui.cart = {};
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  // Owner dengan Face ID / sidik jari. Kalau batal atau gagal, tampilkan isian kata sandi.
+  let faceIdJalan = false;
+  async function masukFaceId() {
+    const kunci = kunciFaceId();
+    if (!kunci || faceIdJalan) return;
+    faceIdJalan = true;
+    let ok = false;
+    try { ok = await F.cek(kunci); } catch (e) { ok = false; }
+    faceIdJalan = false;
+    if (ok) { masukMode('owner'); return; }
+    ui.gerbang = ui.gerbangAsal = 'owner';
+    ui.gerbangMsg = { type: 'err', text: t('Face ID / sidik jari tidak berhasil. Coba lagi, atau masuk dengan kata sandi.') };
     render();
     window.scrollTo(0, 0);
   }
@@ -1138,10 +1177,47 @@
       jadiLipat('merek', viewMerek()),
       jadiLipat('pengaturan', viewPengaturan()),
       jadiLipat('cloud', viewCloud(), !cloud.user),
+      viewFaceId() && jadiLipat('faceid', viewFaceId(), !!ui.faceIdMsg),
       viewStaff() && jadiLipat('staff', viewStaff(), !!ui.staff.kode),
       jadiLipat('kunci', viewModeKasir(), !!ui.kunciMsg),
       viewGabung() && jadiLipat('gabung', viewGabung(), !!ui.gabungMsg),
     ].filter(Boolean).join('');
+  }
+
+  // Owner: masuk dengan Face ID / sidik jari di HP ini, sebagai pengganti mengetik kata sandi.
+  function viewFaceId() {
+    if (!cloudReady || !cloud.user || cloud.peran !== 'owner') return '';
+    const kunci = kunciFaceId();
+    let isi;
+    if (ui.faceIdBisa === false) {
+      isi = `<div class="small muted">${t('HP atau browser ini belum mendukung Face ID / sidik jari untuk aplikasi web. Pastikan kunci layar HP (Face ID, sidik jari, atau PIN) sudah aktif.')}</div>`;
+    } else if (kunci) {
+      isi = `<div class="row"><b>${t('Aktif di HP ini')}</b><span class="aktif small">● ${t('Aktif')}</span></div>
+        <div class="small muted">${t('Saat membuka Kelola sebagai Owner, cukup pindai wajah atau sidik jari. Kata sandi tetap bisa dipakai kapan saja.')}</div>
+        <button class="btn block" data-act="faceid-matikan">${t('Matikan Face ID / sidik jari')}</button>`;
+    } else {
+      isi = `<div class="small muted">${t('Masuk sebagai Owner tanpa mengetik kata sandi. Data wajah atau sidik jari tetap di HP ini dan tidak dikirim ke mana pun.')}</div>
+        <button class="btn primary block btn-faceid" data-act="faceid-aktifkan" ${ui.faceIdBisa ? '' : 'disabled'}>${IKON_FACEID}${t('Aktifkan Face ID / sidik jari')}</button>
+        <div class="small muted">${t('Siapa pun yang wajah atau sidik jarinya terdaftar di HP ini bisa membuka mode Owner. Jangan aktifkan di HP yang dipakai bersama staff.')}</div>`;
+    }
+    return `<div class="group-title">${t('Face ID / sidik jari')}</div><div class="card stack" id="faceId">${pesan(ui.faceIdMsg)}${isi}</div>`;
+  }
+
+  async function aktifkanFaceId() {
+    if (!cloud.user) return;
+    const user = cloud.user;
+    ui.faceIdMsg = null;
+    try {
+      const kunci = await F.daftar(user, profil().namaUsaha);
+      F.catat(window.localStorage, user.id, kunci);
+      ui.faceIdMsg = { type: 'ok', text: t('Face ID / sidik jari aktif. Lain kali pilih Owner, lalu pindai wajah atau sidik jari.') };
+    } catch (e) {
+      ui.faceIdMsg = { type: 'err', text: e && e.name === 'NotAllowedError'
+        ? t('Dibatalkan. Coba lagi kalau mau mengaktifkan Face ID / sidik jari.')
+        : t('Face ID / sidik jari tidak bisa diaktifkan di HP ini.') };
+    }
+    ui.lipat.faceid = true;
+    render();
   }
 
   // Akun yang pernah masuk di HP ini, untuk pindah akun.
@@ -1168,7 +1244,7 @@
     const pilihan = palet.filter((h) => W.luminans(h) < 0.45);
     const swatch = (pilihan.length ? pilihan : palet).map((h) => `<button type="button" class="swatch" data-act="warna" data-w="${h}" aria-pressed="${w === h}" style="background:${h}" aria-label="${h}"></button>`).join('');
     return `<div class="group-title">${t('Logo & warna usaha')}</div><div class="card stack" id="merek">
-      <div class="dengan-foto"><img class="logo-pratinjau" src="${esc(p.logo || 'icons/logo.svg')}" alt="">
+      <div class="dengan-foto"><img class="logo-pratinjau" src="${esc(p.logo || 'icons/logo.png')}" alt="">
         <div class="small muted">${t('Logo ini tampil di pojok kiri atas, juga di HP staff.')}</div></div>
       <div class="foto-aksi">
         <label class="btn kecil"><input type="file" accept="image/*" data-logo hidden>${p.logo ? t('Ganti logo') : t('Pilih logo')}</label>
@@ -2142,6 +2218,15 @@
       }
       case 'pilih-kasir': pilihKasir(); break;
       case 'tanpa-akun': if (tanpaAkunBoleh()) masukMode('owner'); break;
+      case 'owner-faceid': masukFaceId(); break;
+      case 'faceid-aktifkan': aktifkanFaceId(); break;
+      case 'faceid-matikan':
+        if (cloud.user && confirm(t('Matikan Face ID / sidik jari untuk akun ini di HP ini? Masuk sebagai Owner akan memakai kata sandi lagi.'))) {
+          F.hapus(window.localStorage, cloud.user.id);
+          ui.faceIdMsg = { type: 'ok', text: t('Face ID / sidik jari dimatikan.') };
+          render();
+        }
+        break;
       case 'ganti-mode': gantiMode(); break;
     }
   });
@@ -2716,6 +2801,7 @@
   terapkanTema();
   initCloud();
   render();
+  cekFaceIdBisa();
 
   // Untuk pengujian.
   window.Kelola = { store, cloud, ui, H, setel };

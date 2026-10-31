@@ -79,7 +79,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `supabase/schema.sql` | Tabel, trigger, dan aturan keamanan di Supabase |
 | `supabase/staff.sql` | Tabel dan fungsi untuk akun staff |
 | `vendor/` | Pustaka supabase-js 2.45.4 dan huruf Exo 2 (disimpan lokal supaya jalan offline) |
-| `icons/logo.svg` | Logo Kelola (K putih dan kuning di atas navy); `logo-asli.jpg` adalah file aslinya |
+| `icons/logo.png` | Logo Kelola (K putih dan kuning di atas navy, sudut transparan); `logo-asli.jpg` adalah file aslinya, `icon-*.png` ikon layar utama |
 | `sw.js`, `manifest.webmanifest`, `icons/icon-*.png` | Supaya bisa dipasang di layar utama dan jalan offline |
 
 ## Pengujian
