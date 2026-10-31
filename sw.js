@@ -1,11 +1,11 @@
 // Supaya Kelola tetap terbuka tanpa internet.
 // Naikkan VERSION setiap kali ada file yang berubah.
-const VERSION = 'kelola-v17';
+const VERSION = 'kelola-v18';
 const FILES = [
   './',
   'index.html',
   'manifest.webmanifest',
-  'icons/logo.svg',
+  'icons/logo.png',
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',

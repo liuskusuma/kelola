@@ -242,7 +242,7 @@
       terapkanTema();
     }
     const logo = $('header.nav .logo');
-    const src = usaha().logo || 'icons/logo.svg';
+    const src = usaha().logo || 'icons/logo.png';
     if (logo.getAttribute('src') !== src) logo.setAttribute('src', src);
   }
 
@@ -312,7 +312,7 @@
 
   function viewGerbang() {
     const u = usaha();
-    const merek = (sub) => `<div class="merek"><img src="${esc(u.logo || 'icons/logo.svg')}" alt="">
+    const merek = (sub) => `<div class="merek"><img src="${esc(u.logo || 'icons/logo.png')}" alt="">
       <h1>${esc(u.namaUsaha || 'Kelola')}</h1><p>${sub}</p></div>`;
     const kembali = (ke, teks) => `<button type="button" class="kembali" data-act="gerbang" data-g="${ke}">← ${teks}</button>`;
     const msg = pesan(ui.gerbangMsg);
@@ -1244,7 +1244,7 @@
     const pilihan = palet.filter((h) => W.luminans(h) < 0.45);
     const swatch = (pilihan.length ? pilihan : palet).map((h) => `<button type="button" class="swatch" data-act="warna" data-w="${h}" aria-pressed="${w === h}" style="background:${h}" aria-label="${h}"></button>`).join('');
     return `<div class="group-title">${t('Logo & warna usaha')}</div><div class="card stack" id="merek">
-      <div class="dengan-foto"><img class="logo-pratinjau" src="${esc(p.logo || 'icons/logo.svg')}" alt="">
+      <div class="dengan-foto"><img class="logo-pratinjau" src="${esc(p.logo || 'icons/logo.png')}" alt="">
         <div class="small muted">${t('Logo ini tampil di pojok kiri atas, juga di HP staff.')}</div></div>
       <div class="foto-aksi">
         <label class="btn kecil"><input type="file" accept="image/*" data-logo hidden>${p.logo ? t('Ganti logo') : t('Pilih logo')}</label>
