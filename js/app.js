@@ -55,6 +55,7 @@
     staff: { list: null, kode: null, msg: null, belumSiap: false, memuat: false }, // daftar staff untuk owner
     faceIdBisa: null, // HP ini punya Face ID / sidik jari untuk web (null = belum dicek)
     faceIdMsg: null,
+    tawarFaceId: null, // id akun yang baru masuk dengan kata sandi: tawarkan Face ID
   };
 
   const cloud = {
@@ -303,7 +304,7 @@
     renderBadge();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
-    viewEl.innerHTML = views[ui.view]();
+    viewEl.innerHTML = viewTawarFaceId() + views[ui.view]();
   }
 
   // Label kecil di bawah judul: siapa yang sedang memakai aplikasi.
@@ -514,6 +515,7 @@
         const { error } = await cloud.client.auth.signInWithPassword({ email, password });
         if (!error) {
           await simpanSandi(email, password);
+          if (tujuan === 'owner') tawarkanFaceId();
           masukMode(tujuan);
           return;
         }
@@ -551,6 +553,7 @@
       if (data.session) {
         await simpanSandi(email, f.password.value);
         if (tambah) await setUser(data.user);
+        tawarkanFaceId();
         masukMode('owner');
         return;
       }
@@ -608,6 +611,7 @@
       F.simpanSesi(window.localStorage, data.user.id, null);
       await simpanSandi(email, password);
       await setUser(data.user);
+      tawarkanFaceId();
       masukMode('owner');
     } catch (err) {
       gagal(pesanAuth(err));
@@ -1287,6 +1291,7 @@
       const kunci = await F.daftar(user, profil().namaUsaha);
       F.catat(window.localStorage, user.id, kunci);
       ui.faceIdMsg = { type: 'ok', text: t('Face ID / sidik jari aktif. Lain kali pilih Owner, lalu pindai wajah atau sidik jari.') };
+      if (ui.tawarFaceId) { ui.tawarFaceId = null; toast(t('Face ID / sidik jari aktif')); }
     } catch (e) {
       ui.faceIdMsg = { type: 'err', text: e && e.name === 'NotAllowedError'
         ? t('Dibatalkan. Coba lagi kalau mau mengaktifkan Face ID / sidik jari.')
@@ -1294,6 +1299,21 @@
     }
     ui.lipat.faceid = true;
     render();
+  }
+
+  // Baru masuk dengan kata sandi dan Face ID belum aktif untuk akun ini: tawarkan sekali di atas halaman.
+  // Tidak langsung meminta wajah, karena iPhone hanya mengizinkannya tepat setelah tombol disentuh.
+  function tawarkanFaceId() {
+    ui.tawarFaceId = cloud.user ? cloud.user.id : null;
+  }
+  function viewTawarFaceId() {
+    if (!cloud.user || ui.tawarFaceId !== cloud.user.id || !ui.faceIdBisa || kunciFaceId() || cloud.peran !== 'owner' || hanyaKasir()) return '';
+    return `<div class="card stack tawar-faceid" id="tawarFaceId">
+      <div class="dengan-ikon">${IKON_FACEID}<div><b>${t('Pakai Face ID / sidik jari untuk akun ini?')}</b>
+        <div class="small muted">${t('Lain kali masuk atau pindah ke akun ini cukup dengan wajah atau sidik jari, tanpa kata sandi.')}</div></div></div>
+      ${ui.faceIdMsg && ui.faceIdMsg.type === 'err' ? pesan(ui.faceIdMsg) : ''}
+      <div class="row"><button class="btn kecil" data-act="faceid-nanti">${t('Nanti saja')}</button>
+        <button class="btn kecil primary" data-act="faceid-aktifkan">${t('Aktifkan')}</button></div></div>`;
   }
 
   // Akun yang pernah masuk di HP ini, untuk pindah akun.
@@ -2298,6 +2318,7 @@
       case 'tanpa-akun': if (tanpaAkunBoleh()) masukMode('owner'); break;
       case 'owner-faceid': masukFaceId(); break;
       case 'faceid-aktifkan': aktifkanFaceId(); break;
+      case 'faceid-nanti': ui.tawarFaceId = null; ui.faceIdMsg = null; render(); break;
       case 'faceid-matikan':
         if (cloud.user && confirm(t('Matikan Face ID / sidik jari untuk akun ini di HP ini? Masuk sebagai Owner akan memakai kata sandi lagi.'))) {
           F.hapus(window.localStorage, cloud.user.id);
