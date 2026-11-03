@@ -116,9 +116,9 @@ async function mock(route) {
       .forEach((j) => j.data.items.forEach((i) => { tertunda[i.produkId] = (tertunda[i.produkId] || 0) + i.qty; }));
     const prof = milik.find((r) => r.kind === 'profil');
     return json(200, {
-      usaha: { namaUsaha: prof ? prof.data.namaUsaha : null, kontak: prof ? prof.data.kontak : null, qris: prof ? prof.data.qris || null : null, logo: prof ? prof.data.logo || null : null, warna: prof ? prof.data.warna || null : null },
+      usaha: { namaUsaha: prof ? prof.data.namaUsaha : null, kontak: prof ? prof.data.kontak : null, qris: prof ? prof.data.qris || null : null, logo: prof ? prof.data.logo || null : null, warna: prof ? prof.data.warna || null : null, kategori: prof ? prof.data.kategori || null : null },
       produk: milik.filter((r) => r.kind === 'produk').map((r) => ({
-        id: r.id, nama: r.data.nama, harga: r.data.harga, satuan: r.data.satuan, foto: r.data.foto, mode: r.data.mode, paket: r.data.paket,
+        id: r.id, nama: r.data.nama, harga: r.data.harga, satuan: r.data.satuan, kategori: r.data.kategori || null, foto: r.data.foto, mode: r.data.mode, paket: r.data.paket,
         stok: typeof r.data.stok === 'number' ? r.data.stok - (tertunda[r.id] || 0) : null,
       })),
     });
@@ -302,6 +302,35 @@ async function tab(ctx, errors) {
   await p.fill('input[name=harga]', '25000');
   await p.click('#formProduk button.primary');
 
+  // 10b. Kategori: buat dari form produk, saring di kasir, lalu ganti nama dan urutan.
+  const judulKategori = () => p.locator('li.kat-judul').allTextContents();
+  assert.equal(await p.locator('li.kat-judul').count(), 0, 'tanpa kategori, daftar tidak dikelompokkan');
+  await p.click('li.row:has-text("Es kopi") [data-act=produk-ubah]');
+  await p.click('[data-act=kategori-baru]');
+  await p.fill('input[name=kategoriBaru]', ' minuman ');
+  await p.click('#formProduk button.primary');
+  await p.click('li.row:has-text("Keripik pedas") [data-act=produk-ubah]');
+  await p.click('[data-act=kategori-baru]');
+  await p.fill('input[name=kategoriBaru]', 'Camilan');
+  await p.click('#formProduk button.primary');
+  assert.deepEqual(await judulKategori(), ['minuman · 1', 'Camilan · 1', 'Lainnya · 1']);
+  await p.click('li.row:has-text("Paket ngopi") [data-act=produk-ubah]');
+  assert.deepEqual(await p.locator('[data-act=pilih-kategori]').allTextContents(), ['minuman', 'Camilan']);
+  await p.click('dialog >> text=Tutup');
+  await p.click('nav >> text=Kasir');
+  assert.deepEqual(await p.locator('.kat-chips button').allTextContents(), ['Semua3', 'minuman1', 'Camilan1', 'Lainnya1']);
+  await p.click('.kat-chips >> text=Camilan');
+  assert.deepEqual(await p.locator('.grid .tile .nama').allTextContents(), ['Keripik pedas']);
+  await p.click('.kat-chips >> text=Semua');
+  assert.equal(await p.locator('.grid .tile').count(), 3);
+  await p.click('nav >> text=Produk');
+  await p.click('[data-act=atur-kategori]');
+  await p.fill('.kat-baris >> nth=0 >> input', 'Minuman');
+  await p.click('.kat-baris >> nth=0 >> [data-act=kategori-turun]');
+  await p.click('#formKategori button.primary');
+  assert.deepEqual(await judulKategori(), ['Camilan · 1', 'Minuman · 1', 'Lainnya · 1']);
+  assert.equal(await p.evaluate(() => Kelola.store.list('produk').find((r) => r.data.nama === 'Es kopi').data.kategori), 'Minuman');
+
   // 11. Jual es kopi ×2 dan paket ×1: stok gula & keripik berkurang, struk bisa dibuat.
   await p.click('nav >> text=Kasir');
   await p.click('.tile:has-text("Es kopi")');
@@ -468,6 +497,8 @@ async function tab(ctx, errors) {
   await s.waitForSelector('.tile:has-text("Keripik pedas")');
   assert.deepEqual(await s.locator('nav.tabs button:visible').allInnerTexts(), ['Kasir', 'Akun']);
   assert.ok(norm(await s.textContent('.tile:has-text("Keripik pedas")')).includes('Stok 14'));
+  const chipStaff = await s.locator('.kat-chips button').allTextContents();
+  assert.ok(chipStaff.indexOf('Camilan1') > 0 && chipStaff.indexOf('Camilan1') < chipStaff.indexOf('Minuman1'), 'kategori owner ikut di kasir staff: ' + chipStaff);
   assert.ok(await s.evaluate(() => document.querySelector('header.nav .logo').src.startsWith('data:image/png')), 'logo owner tampil di HP staff');
   assert.ok(await s.evaluate(() => document.querySelector('#temaUsaha').textContent.includes('--navy')), 'warna owner dipakai di HP staff');
   const simpananStaff = await s.evaluate(() => Object.keys(localStorage).map((k) => localStorage.getItem(k)).join(''));
