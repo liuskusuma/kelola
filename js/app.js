@@ -8,6 +8,7 @@
   const G = KelolaGrafik;
   const S = KelolaStaff;
   const F = KelolaFaceId;
+  const K = KelolaKategori;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
 
@@ -38,6 +39,7 @@
     pelanggan: { nama: '', wa: '' }, // untuk "bayar nanti"
     trxTerakhir: null, // penjualan yang baru disimpan, untuk tombol struk
     produkTab: 'produk', // produk | bahan
+    kategori: null, // filter kategori di kasir: null = semua, '' = Lainnya
     periode: 'hari',
     dari: '', // periode pilihan sendiri (YYYY-MM-DD)
     sampai: '',
@@ -194,6 +196,17 @@
 
   // Profil usaha: milik sendiri, atau milik owner kalau masuk sebagai staff.
   const usaha = () => (modeStaff() ? kasirStaff.usaha || {} : profil());
+
+  // Urutan kategori produk (lihat js/kategori.js), dari profil owner.
+  const urutanKategori = () => usaha().kategori || [];
+  const daftarKategori = () => K.daftar(urutanKategori(), produkKasir().map((p) => p.data));
+
+  // Simpan urutan kategori di profil kalau ada kategori baru dari form produk.
+  function catatKategori() {
+    const p = profil();
+    const baru = K.daftar(p.kategori, produkList().map((r) => r.data));
+    if (JSON.stringify(baru) !== JSON.stringify(p.kategori || [])) store.put('profil', Object.assign({}, p, { kategori: baru }), 'profil');
+  }
 
   // Produk dan penjualan yang dipakai layar kasir. Staff memakai salinan dari owner tanpa modal.
   function produkKasir() {
@@ -734,7 +747,15 @@
     const items = isiKeranjang();
     const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
     const bayar = num(ui.bayar);
-    const tiles = produk.map((p) => {
+    const grup = K.kelompok(produk, urutanKategori());
+    const adaKategori = grup.some((g) => g.nama);
+    if (ui.kategori !== null && !grup.some((g) => g.nama === ui.kategori)) ui.kategori = null;
+    const tampil = !adaKategori || ui.kategori === null ? produk : grup.find((g) => g.nama === ui.kategori).items;
+    const chip = (k, label, n) => `<button data-act="filter-kategori" data-k="${k === null ? '*' : esc(k)}" aria-pressed="${ui.kategori === k}">${esc(label)}<span class="n">${n}</span></button>`;
+    const chips = adaKategori
+      ? `<div class="kat-chips" role="group" aria-label="${t('Kategori')}">${chip(null, t('Semua'), produk.length)}${grup.map((g) => chip(g.nama, g.nama || t('Lainnya'), g.items.length)).join('')}</div>`
+      : '';
+    const tiles = tampil.map((p) => {
       const d = p.data;
       const habis = !bisaTambah(p.id);
       const stok = d.stok != null && d.mode !== 'paket' ? `<div class="small muted">${t('Stok')} ${angka.format(d.stok)} ${esc(d.satuan || '')}</div>` : '';
@@ -765,7 +786,7 @@
         </div></div>`
       : '';
     const petunjuk = items.length ? '' : `<div class="foot" style="margin:0 8px 14px">${t('Ketuk produk untuk menambahkannya ke keranjang.')}</div>`;
-    return `${info}${cart}<div class="group-title">${t('Produk')}</div>${petunjuk}<div class="grid">${tiles}</div>`;
+    return `${info}${cart}<div class="group-title">${t('Produk')}</div>${petunjuk}${chips}<div class="grid">${tiles}</div>`;
   }
 
   // Isian di keranjang sesuai cara bayar.
@@ -814,8 +835,7 @@
           <div class="small muted">${t('Modal {n} produk ikut berubah. Cek apakah harga jualnya masih menguntungkan.', { n: berubah.length })}</div></div>
           <button class="btn primary block" data-act="dampak">${t('Cek harga jual')}</button></div>`
       : '';
-    const list = produk.length
-      ? `<ul class="list">${produk.map((p) => {
+    const baris = (p) => {
           const d = p.data;
           const modal = modalOf(p);
           const m = H.margin(modal, d.harga);
@@ -829,9 +849,17 @@
           return `<li class="row"><div class="dengan-foto">${fotoKecil(d)}<div><div class="nama">${esc(d.nama)} ${jenis}</div>
             <div class="small muted">${t('Modal {modal} · jual {harga} · laba {laba} ({m}%)', { modal: rp(modal), harga: rp(d.harga), laba: rp(d.harga - modal), m: angka.format(m) })}${stok}</div>${naik}${rugi}</div></div>
             <div class="aksi">${produksi}<button class="btn kecil" data-act="produk-ubah" data-id="${p.id}">${t('Ubah')}</button></div></li>`;
-        }).join('')}</ul>`
+    };
+    // Kelompokkan per kategori kalau sudah ada kategori.
+    const grup = K.kelompok(produk, profil().kategori);
+    const isi = grup.some((g) => g.nama)
+      ? grup.map((g) => `<li class="kat-judul">${esc(g.nama || t('Lainnya'))} · ${g.items.length}</li>${g.items.map(baris).join('')}`).join('')
+      : produk.map(baris).join('');
+    const list = produk.length
+      ? `<ul class="list">${isi}</ul>`
       : `<div class="empty">${t('Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.')}</div>`;
-    return `${peringatan}<div class="group-title"><span>${t('Daftar produk')}</span><button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></div>
+    const atur = produk.length ? `<button class="link tambah" data-act="atur-kategori">${t('Kategori')}</button>` : '';
+    return `${peringatan}<div class="group-title"><span>${t('Daftar produk')}</span><span class="aksi-judul">${atur}<button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></span></div>
       <div class="card">${list}</div>
       <div class="foot">${t('Modal bisa diisi sendiri, dihitung dari resep bahan baku, atau dari isi paket. Harga jual disarankan dari target margin.')}</div>`;
   }
@@ -1439,6 +1467,80 @@
 
   const labelStok = (mode) => t(mode === 'resep' ? 'Stok produk jadi (kosongkan kalau dibuat saat dipesan)' : 'Stok (kosongkan jika tidak dihitung)');
 
+  // Pilihan kategori di form produk: tombol kategori yang ada, atau ketik kategori baru.
+  function isianKategori(d) {
+    const list = K.daftar(profil().kategori, produkList().map((p) => p.data));
+    const pilih = K.milik(d, list);
+    const chips = list.map((k) => `<button type="button" data-act="pilih-kategori" data-k="${esc(k)}" aria-pressed="${k === pilih}">${esc(k)}</button>`).join('');
+    return `<div class="field"><span class="lbl">${t('Kategori (boleh kosong)')}</span>
+      <input type="hidden" name="kategori" value="${esc(pilih)}">
+      <div class="kat-pilih">${chips}<button type="button" class="baru" data-act="kategori-baru">${t('+ Kategori baru')}</button></div>
+      <input name="kategoriBaru" maxlength="${K.MAKS}" hidden placeholder="${t('Nama kategori, mis. Minuman')}" aria-label="${t('Nama kategori baru')}" style="margin-top:10px"></div>`;
+  }
+
+  function pilihKategori(el) {
+    const f = $('#formProduk');
+    const aktif = el.getAttribute('aria-pressed') === 'true';
+    $$('[data-act=pilih-kategori]', f).forEach((b) => b.setAttribute('aria-pressed', b === el && !aktif));
+    f.kategori.value = aktif ? '' : el.dataset.k;
+    f.kategoriBaru.value = '';
+    f.kategoriBaru.hidden = true;
+  }
+
+  function kategoriBaruForm() {
+    const f = $('#formProduk');
+    $$('[data-act=pilih-kategori]', f).forEach((b) => b.setAttribute('aria-pressed', false));
+    f.kategori.value = '';
+    f.kategoriBaru.hidden = false;
+    f.kategoriBaru.focus();
+  }
+
+  // Atur kategori: ganti nama, urutan, tambah, atau hapus.
+  function barisKategori(k, n) {
+    return `<div class="kat-baris" data-lama="${esc(k)}">
+      <input name="kn" maxlength="${K.MAKS}" value="${esc(k)}" placeholder="${t('Nama kategori, mis. Minuman')}" aria-label="${t('Nama kategori')}">
+      <span class="small muted">${k ? t('{n} produk', { n }) : ''}</span>
+      <button type="button" data-act="kategori-naik" aria-label="${t('Naikkan')}">↑</button>
+      <button type="button" data-act="kategori-turun" aria-label="${t('Turunkan')}">↓</button>
+      <button type="button" class="hapus" data-act="kategori-hapus" aria-label="${t('Hapus kategori')}">×</button></div>`;
+  }
+
+  function bukaAturKategori() {
+    const produk = produkList();
+    const list = K.daftar(profil().kategori, produk.map((p) => p.data));
+    const jumlah = (k) => produk.filter((p) => K.milik(p.data, list) === k).length;
+    dialog.innerHTML = `<form id="formKategori" class="stack" method="dialog">
+      <div class="row"><h3>${t('Kategori')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="small muted">${t('Ganti nama, ubah urutan, atau hapus kategori. Urutan ini dipakai di Kasir. Produk dari kategori yang dihapus pindah ke Lainnya.')}</div>
+      <div id="barisKategori">${list.length ? list.map((k) => barisKategori(k, jumlah(k))).join('') : barisKategori('', 0)}</div>
+      <button type="button" class="link" data-act="kategori-tambah">${t('+ Tambah kategori')}</button>
+      <button class="btn primary block">${t('Simpan')}</button>
+    </form>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function simpanAturKategori(f) {
+    const produk = produkList();
+    const lama = K.daftar(profil().kategori, produk.map((p) => p.data));
+    const baris = $$('.kat-baris', f).map((el) => ({ lama: el.dataset.lama, baru: $('[name=kn]', el).value }));
+    const hasil = K.atur(lama, baris);
+    const pindah = produk.filter((p) => K.kategoriBaru(p.data, hasil.peta) !== null);
+    const keLainnya = pindah.filter((p) => K.kategoriBaru(p.data, hasil.peta) === '').length;
+    if (keLainnya && !confirm(t('{n} produk akan pindah ke Lainnya. Lanjutkan?', { n: keLainnya }))) return;
+    change(() => {
+      pindah.forEach((p) => {
+        const d = Object.assign({}, p.data);
+        const k = K.kategoriBaru(d, hasil.peta);
+        if (k) d.kategori = k; else delete d.kategori;
+        store.put('produk', d, p.id);
+      });
+      store.put('profil', Object.assign({}, profil(), { kategori: hasil.urutan }), 'profil');
+    });
+    dialog.close();
+    render();
+    toast(t('Kategori tersimpan'));
+  }
+
   function bukaFormProduk(id) {
     const rec = id ? store.get(id) : null;
     const d = rec ? rec.data : { nama: '', satuan: 'pcs', mode: 'manual', modal: '', harga: '', stok: null };
@@ -1453,6 +1555,7 @@
       <div class="row"><h3>${rec ? t('Ubah produk') : t('Produk baru')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
       <div class="field"><span class="lbl">${t('Foto produk (boleh kosong)')}</span><div id="fotoProduk" class="foto-form"></div></div>
       <label class="field"><span>${t('Nama produk')}</span><input name="nama" required value="${esc(d.nama)}" placeholder="${t('Contoh: Keripik pedas 100 g')}"></label>
+      ${isianKategori(d)}
       <label class="field"><span>${t('Satuan jual')}</span><input name="satuan" value="${esc(d.satuan || '')}" placeholder="${t('pcs, porsi, gelas')}"></label>
       <div class="field"><span class="lbl">${t('Modal per satuan')}</span><div class="seg kecil">${seg}</div></div>
       <input type="hidden" name="mode" value="${mode}">
@@ -1624,6 +1727,8 @@
   function bacaFormProduk(f) {
     const mode = f.mode.value;
     const d = { nama: f.nama.value.trim(), satuan: f.satuan.value.trim(), mode, harga: num(f.harga.value) };
+    const kategori = K.cocokkan(K.daftar(profil().kategori, produkList().map((p) => p.data)), f.kategoriBaru.value) || K.rapikan(f.kategori.value);
+    if (kategori) d.kategori = kategori;
     if (ui.foto) d.foto = ui.foto;
     if (mode === 'resep') {
       d.resep = {
@@ -2164,6 +2269,32 @@
       case 'produk-baru': bukaFormProduk(); break;
       case 'produk-ubah': bukaFormProduk(id); break;
       case 'produk-tab': ui.produkTab = el.dataset.t; render(); break;
+      case 'filter-kategori': {
+        ui.kategori = el.dataset.k === '*' ? null : el.dataset.k;
+        render();
+        const aktif = $('.kat-chips [aria-pressed="true"]');
+        if (aktif) aktif.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        break;
+      }
+      case 'pilih-kategori': pilihKategori(el); break;
+      case 'kategori-baru': kategoriBaruForm(); break;
+      case 'atur-kategori': bukaAturKategori(); break;
+      case 'kategori-tambah': {
+        $('#barisKategori').insertAdjacentHTML('beforeend', barisKategori('', 0));
+        $('#barisKategori .kat-baris:last-child [name=kn]').focus();
+        break;
+      }
+      case 'kategori-hapus': el.closest('.kat-baris').remove(); break;
+      case 'kategori-naik': {
+        const b = el.closest('.kat-baris');
+        if (b.previousElementSibling) b.previousElementSibling.before(b);
+        break;
+      }
+      case 'kategori-turun': {
+        const b = el.closest('.kat-baris');
+        if (b.nextElementSibling) b.nextElementSibling.after(b);
+        break;
+      }
       case 'tutup': dialog.close(); break;
       case 'mode-modal': gantiModeModal(el.dataset.m); break;
       case 'tambah-bahan-resep': $('#barisResep').insertAdjacentHTML('beforeend', barisResep()); hitungForm(); break;
@@ -2418,10 +2549,15 @@
       const d = bacaFormProduk(f);
       if (d.mode === 'resep' && !d.resep.items.length) { toast(t('Tambahkan minimal satu bahan ke resep')); return; }
       if (d.mode === 'paket' && !d.paket.length) { toast(t('Tambahkan minimal satu produk ke paket')); return; }
-      change(() => store.put('produk', d, f.produkId.value || undefined));
+      change(() => { store.put('produk', d, f.produkId.value || undefined); catatKategori(); });
       dialog.close();
       render();
       toast(t('Produk tersimpan'));
+    }
+    if (f.id === 'formKategori') {
+      e.preventDefault();
+      simpanAturKategori(f);
+      return;
     }
     if (f.id === 'formLunas') {
       e.preventDefault();

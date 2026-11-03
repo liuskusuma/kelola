@@ -357,6 +357,35 @@
     .baris .unit { overflow: hidden; text-overflow: ellipsis; }
     .baris select, .baris input { padding: 10px 10px; }
     .baris .hapus { width: 32px; height: 32px; }
+    /* Kategori produk */
+    .kat-chips { display: flex; gap: 8px; overflow-x: auto; padding: 4px 8px 14px; margin: 0 -8px; scrollbar-width: none; }
+    .kat-chips::-webkit-scrollbar { display: none; }
+    .kat-chips button {
+      flex: none; border: 0; border-radius: 999px; padding: 9px 16px; font-size: 14px; font-weight: 700; cursor: pointer;
+      background: var(--cell); color: var(--muted); box-shadow: var(--raised-sm); white-space: nowrap;
+    }
+    .kat-chips button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); }
+    .kat-chips .n { opacity: .7; font-weight: 600; margin-left: 6px; }
+    .list .kat-judul {
+      display: block; font-family: var(--f-display); font-weight: 800; font-size: 12px; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); padding: 14px 4px 6px;
+    }
+    .kat-pilih { display: flex; flex-wrap: wrap; gap: 8px; }
+    .kat-pilih button {
+      border: 0; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+      background: var(--well); box-shadow: var(--inset-sm); color: var(--text);
+    }
+    .kat-pilih button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); box-shadow: var(--raised-sm); font-weight: 700; }
+    .kat-pilih button.baru { background: none; box-shadow: none; color: var(--accent-text); font-weight: 700; border: 1.5px dashed currentColor; }
+    .kat-baris { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px 32px 32px; gap: 6px; align-items: center; }
+    .kat-baris + .kat-baris { margin-top: 8px; }
+    .kat-baris input { padding: 10px; }
+    .kat-baris button {
+      width: 32px; height: 32px; border: 0; border-radius: 50%; cursor: pointer;
+      background: var(--cell); box-shadow: var(--raised-sm); color: var(--accent-text); font-size: 16px; font-weight: 700;
+    }
+    .kat-baris .hapus { color: var(--danger); font-size: 20px; }
+    .aksi-judul { display: flex; gap: 16px; align-items: center; white-space: nowrap; }
     .field.sempit > span { margin-bottom: 4px; }
     .pilihan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     .pilih {
@@ -473,6 +502,7 @@
   <script src="js/bahasa.js"></script>
   <script src="js/store.js"></script>
   <script src="js/hitung.js"></script>
+  <script src="js/kategori.js"></script>
   <script src="js/warna.js"></script>
   <script src="js/grafik.js"></script>
   <script src="js/excel.js"></script>
