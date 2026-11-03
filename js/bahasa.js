@@ -454,6 +454,7 @@
     'Jam': 'Time',
     'Barang': 'Items',
     'Kategori': 'Category',
+    'Atur kategori': 'Manage categories',
     'Catatan': 'Note',
     'Terjual': 'Sold',
     'laporan': 'report',

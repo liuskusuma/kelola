@@ -858,8 +858,11 @@
     const list = produk.length
       ? `<ul class="list">${isi}</ul>`
       : `<div class="empty">${t('Belum ada produk. Tambahkan produk untuk menghitung harga jual dan mulai berjualan.')}</div>`;
-    const atur = produk.length ? `<button class="link tambah" data-act="atur-kategori">${t('Kategori')}</button>` : '';
-    return `${peringatan}<div class="group-title"><span>${t('Daftar produk')}</span><span class="aksi-judul">${atur}<button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></span></div>
+    // Tombol atur kategori di baris sendiri, supaya tidak disangka "tambah kategori".
+    const atur = produk.length
+      ? `<div class="atur-kategori"><button class="btn kecil" data-act="atur-kategori"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>${t('Atur kategori')}</button></div>`
+      : '';
+    return `${peringatan}<div class="group-title"><span>${t('Daftar produk')}</span><button class="link tambah" data-act="produk-baru">${t('+ Tambah produk')}</button></div>${atur}
       <div class="card">${list}</div>
       <div class="foot">${t('Modal bisa diisi sendiri, dihitung dari resep bahan baku, atau dari isi paket. Harga jual disarankan dari target margin.')}</div>`;
   }
@@ -1510,7 +1513,7 @@
     const list = K.daftar(profil().kategori, produk.map((p) => p.data));
     const jumlah = (k) => produk.filter((p) => K.milik(p.data, list) === k).length;
     dialog.innerHTML = `<form id="formKategori" class="stack" method="dialog">
-      <div class="row"><h3>${t('Kategori')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <div class="row"><h3>${t('Atur kategori')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
       <div class="small muted">${t('Ganti nama, ubah urutan, atau hapus kategori. Urutan ini dipakai di Kasir. Produk dari kategori yang dihapus pindah ke Lainnya.')}</div>
       <div id="barisKategori">${list.length ? list.map((k) => barisKategori(k, jumlah(k))).join('') : barisKategori('', 0)}</div>
       <button type="button" class="link" data-act="kategori-tambah">${t('+ Tambah kategori')}</button>
