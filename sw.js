@@ -1,6 +1,6 @@
 // Supaya Kelola tetap terbuka tanpa internet.
 // Naikkan VERSION setiap kali ada file yang berubah.
-const VERSION = 'kelola-v22';
+const VERSION = 'kelola-v23';
 const FILES = [
   './',
   'index.html',
