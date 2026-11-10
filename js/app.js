@@ -1171,6 +1171,29 @@
     return baris.join('\n');
   }
 
+  // Warna pinggir logo (rata-rata piksel di tepi gambar). Putih kalau tepinya transparan.
+  function warnaTepiLogo(logo) {
+    if (!logo) return '#ffffff';
+    try {
+      const n = 32;
+      const c = document.createElement('canvas');
+      c.width = c.height = n;
+      const x = c.getContext('2d');
+      x.drawImage(logo, 0, 0, n, n);
+      const d = x.getImageData(0, 0, n, n).data;
+      let r = 0, g = 0, b = 0, a = 0, k = 0;
+      for (let i = 0; i < n; i++) for (const [px, py] of [[i, 0], [i, n - 1], [0, i], [n - 1, i]]) {
+        const o = (py * n + px) * 4;
+        r += d[o]; g += d[o + 1]; b += d[o + 2]; a += d[o + 3]; k++;
+      }
+      if (a / k < 200) return '#ffffff';
+      const h = (v) => Math.round(v / k).toString(16).padStart(2, '0');
+      return `#${h(r)}${h(g)}${h(b)}`;
+    } catch (e) {
+      return '#ffffff';
+    }
+  }
+
   function muatGambar(src) {
     if (!src) return Promise.resolve(null);
     return new Promise((ok) => {
@@ -1208,12 +1231,21 @@
       // Kepala: warna usaha, logo, nama usaha.
       ctx.fillStyle = utama;
       ctx.fillRect(0, 0, W, 170);
-      ctx.fillStyle = '#ffffff';
-      kotak(ctx, pad, 37, 96, 96, 22); ctx.fill();
+      // Kotak logo memakai warna tepi logo itu sendiri, supaya tidak ada pinggiran putih.
+      ctx.save();
+      kotak(ctx, pad, 37, 96, 96, 22);
+      ctx.fillStyle = warnaTepiLogo(logo);
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 4;
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.clip();
       if (logo) {
-        const s = Math.min(84 / logo.width, 84 / logo.height);
+        const s = Math.min(96 / logo.width, 96 / logo.height);
         ctx.drawImage(logo, pad + 48 - (logo.width * s) / 2, 85 - (logo.height * s) / 2, logo.width * s, logo.height * s);
       }
+      ctx.restore();
       const xt = pad + 120;
       ctx.textAlign = 'left';
       ctx.fillStyle = aksen;
