@@ -275,6 +275,19 @@
     const logo = $('header.nav .logo');
     const src = usaha().logo || 'icons/logo.png';
     if (logo.getAttribute('src') !== src) logo.setAttribute('src', src);
+    pasangLatarLogo(src);
+  }
+
+  // Latar di belakang logo di layar (kepala halaman, layar awal, Akun) memakai warna
+  // tepi logo, lewat variabel CSS --logo-latar. Logo bertepi transparan tetap putih.
+  let latarLogoUntuk = null;
+  function pasangLatarLogo(src) {
+    if (src === latarLogoUntuk) return;
+    latarLogoUntuk = src;
+    muatGambar(src).then((img) => {
+      if (latarLogoUntuk !== src) return;
+      document.documentElement.style.setProperty('--logo-latar', warnaTepiLogo(img));
+    });
   }
 
   function ubahPengaturan(patch) {
@@ -1194,6 +1207,26 @@
     }
   }
 
+  // Logo di dalam kotak bersudut bulat yang memakai warna tepi logo itu sendiri,
+  // supaya tidak ada pinggiran putih. Dipakai di gambar tagihan dan struk.
+  function kotakLogo(ctx, logo, x, y, ukuran, sudut, bayangan) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, ukuran, ukuran, sudut);
+    ctx.fillStyle = warnaTepiLogo(logo);
+    ctx.shadowColor = `rgba(0, 0, 0, ${bayangan})`;
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 4;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.clip();
+    if (logo) {
+      const s = Math.min(ukuran / logo.width, ukuran / logo.height);
+      ctx.drawImage(logo, x + ukuran / 2 - (logo.width * s) / 2, y + ukuran / 2 - (logo.height * s) / 2, logo.width * s, logo.height * s);
+    }
+    ctx.restore();
+  }
+
   function muatGambar(src) {
     if (!src) return Promise.resolve(null);
     return new Promise((ok) => {
@@ -1231,21 +1264,7 @@
       // Kepala: warna usaha, logo, nama usaha.
       ctx.fillStyle = utama;
       ctx.fillRect(0, 0, W, 170);
-      // Kotak logo memakai warna tepi logo itu sendiri, supaya tidak ada pinggiran putih.
-      ctx.save();
-      kotak(ctx, pad, 37, 96, 96, 22);
-      ctx.fillStyle = warnaTepiLogo(logo);
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-      ctx.shadowBlur = 14;
-      ctx.shadowOffsetY = 4;
-      ctx.fill();
-      ctx.shadowColor = 'transparent';
-      ctx.clip();
-      if (logo) {
-        const s = Math.min(96 / logo.width, 96 / logo.height);
-        ctx.drawImage(logo, pad + 48 - (logo.width * s) / 2, 85 - (logo.height * s) / 2, logo.width * s, logo.height * s);
-      }
-      ctx.restore();
+      kotakLogo(ctx, logo, pad, 37, 96, 22, 0.35);
       const xt = pad + 120;
       ctx.textAlign = 'left';
       ctx.fillStyle = aksen;
@@ -2391,10 +2410,7 @@
     const navy = tm ? tm.terang['--navy'] : '#0a2a6e';
     ctx.fillStyle = tm ? navy : '#fecb10';
     ctx.fillRect(0, 0, W, 12);
-    if (logo) {
-      const sk = Math.min(96 / logo.width, 96 / logo.height);
-      ctx.drawImage(logo, W / 2 - (logo.width * sk) / 2, 40 + 48 - (logo.height * sk) / 2, logo.width * sk, logo.height * sk);
-    }
+    if (logo) kotakLogo(ctx, logo, W / 2 - 48, 40, 96, 22, 0.18);
     let y = 80 + L;
     ctx.textAlign = 'center';
     ctx.fillStyle = navy;
