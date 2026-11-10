@@ -1368,11 +1368,11 @@
     const daftar = lewat ? h.lewat : h.segera;
     const judul = lewat ? t('{n} tagihan lewat jatuh tempo', { n: h.lewat.length }) : t('{n} tagihan segera jatuh tempo', { n: h.segera.length });
     return `<div class="card pengingat${lewat ? ' telat' : ''}" id="pengingat">
-      <div class="ik" aria-hidden="true">!</div>
-      <div class="isi"><b>${judul}</b><div class="small muted">${nama(daftar)} · ${rp(lewat ? h.totalLewat : h.totalSegera)}</div>
-        ${lewat && h.segera.length ? `<div class="small ekstra">${t('+{n} segera jatuh tempo', { n: h.segera.length })}</div>` : ''}</div>
-      <div class="aksi-tegak"><button class="btn kecil primary" data-act="lihat-tagihan">${t('Lihat')}</button>
-        <button class="link small" data-act="tunda-pengingat">${t('Nanti')}</button></div></div>`;
+      <div class="atas"><div class="ik" aria-hidden="true">!</div>
+        <div class="isi"><b>${judul}</b><div class="small muted">${nama(daftar)} · ${rp(lewat ? h.totalLewat : h.totalSegera)}</div>
+          ${lewat && h.segera.length ? `<div class="small ekstra">${t('+{n} segera jatuh tempo', { n: h.segera.length })}</div>` : ''}</div></div>
+      <div class="tombol"><button class="btn kecil" data-act="tunda-pengingat">${t('Nanti')}</button>
+        <button class="btn kecil primary" data-act="lihat-tagihan">${t('Lihat tagihan')}</button></div></div>`;
   }
 
   function lihatTagihan() {

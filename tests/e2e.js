@@ -613,7 +613,7 @@ async function tab(ctx, errors) {
   assert.ok(norm(await p.textContent('#pengingat')).includes('1 tagihan segera jatuh tempo'));
   assert.equal(await p.locator('nav.tabs .tanda-merah').count(), 0);
   // Jatuh tempo diubah ke kemarin: jadi lewat tempo.
-  await p.click('#pengingat >> text=Lihat');
+  await p.click('#pengingat >> text=Lihat tagihan');
   assert.equal(await p.textContent('#judul'), 'Laporan');
   await p.click('#tagihan li:has-text("Pak Budi") [data-act=ubah-tempo-trx]');
   await p.fill('#formTempo input[name=tanggal]', await tglLokal(-1));

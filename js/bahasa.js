@@ -394,7 +394,7 @@
     '{n} tagihan lewat jatuh tempo': 'Overdue bills: {n}',
     '{n} tagihan segera jatuh tempo': 'Bills due soon: {n}',
     '+{n} segera jatuh tempo': '+{n} due soon',
-    'Lihat': 'View',
+    'Lihat tagihan': 'View bills',
     'Nanti': 'Later',
     'Cara bayar & tagihan': 'Payment & billing',
     'Tampil di kasir dan di gambar tagihan. Hanya owner yang bisa mengganti gambar ini.': 'Shown at the cashier and on the bill picture. Only the owner can change it.',

@@ -468,13 +468,14 @@
     .tag.aman { background: color-mix(in srgb, var(--ok) 14%, var(--cell)); color: var(--ok); box-shadow: none; }
     #tagihan .tag { flex: 0 0 auto; align-self: flex-start; font-size: 12px; padding: 3px 10px; }
     #tagihan .link.small { padding: 0; font-size: 13px; }
-    .pengingat { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border: 1.5px solid color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 10%, var(--cell)); }
+    .pengingat { margin-bottom: 16px; border: 1.5px solid color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 10%, var(--cell)); }
     .pengingat.telat { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 9%, var(--cell)); }
-    .pengingat .ik { flex: 0 0 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--warn); color: #fff; font-weight: 800; font-size: 20px; }
+    .pengingat .ik { flex: 0 0 40px; height: 40px; margin-top: 2px; border-radius: 50%; display: grid; place-items: center; background: var(--warn); color: #fff; font-weight: 800; font-size: 20px; }
     .pengingat.telat .ik { background: var(--danger); }
     .pengingat .isi { flex: 1; min-width: 0; }
     .pengingat .ekstra { color: var(--warn); font-weight: 600; }
-    .aksi-tegak { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 0 auto; }
+    .pengingat .atas { display: flex; align-items: flex-start; gap: 12px; }
+    .pengingat .tombol { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
     nav.tabs .ikon { position: relative; }
     .tanda-merah { position: absolute; top: -4px; right: 2px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; line-height: 20px; text-align: center; border: 2px solid var(--bg); box-sizing: content-box; }
     .tagihan-pratinjau { max-height: 300px; overflow: auto; border-radius: 16px; background: var(--well); box-shadow: var(--inset-sm); padding: 10px; }
