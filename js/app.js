@@ -273,20 +273,29 @@
       terapkanTema();
     }
     const logo = $('header.nav .logo');
-    const src = usaha().logo || 'icons/logo.png';
+    const src = logoTampil();
     if (logo.getAttribute('src') !== src) logo.setAttribute('src', src);
-    pasangLatarLogo(src);
+    pasangLatarLogo(usaha().logo || 'icons/logo.png');
   }
 
-  // Latar di belakang logo di layar (kepala halaman, layar awal, Akun) memakai warna
-  // tepi logo, lewat variabel CSS --logo-latar. Logo bertepi transparan tetap putih.
-  let latarLogoUntuk = null;
+  // Logo di layar (kepala halaman, layar awal, Akun) memakai versi yang pinggiran
+  // putihnya sudah dibersihkan, dengan latar warna tepi logo (variabel CSS --logo-latar).
+  // var/function (bukan let/const) supaya aman dipanggil sebelum baris ini dijalankan.
+  var latarLogoUntuk = null;
+  var logoBersih = null; // { untuk, src }
+  function logoTampil() {
+    const asli = usaha().logo || 'icons/logo.png';
+    return logoBersih && logoBersih.untuk === asli ? logoBersih.src : asli;
+  }
   function pasangLatarLogo(src) {
     if (src === latarLogoUntuk) return;
     latarLogoUntuk = src;
     muatGambar(src).then((img) => {
-      if (latarLogoUntuk !== src) return;
-      document.documentElement.style.setProperty('--logo-latar', warnaTepiLogo(img));
+      if (latarLogoUntuk !== src || !img) return;
+      const l = siapkanLogo(img);
+      document.documentElement.style.setProperty('--logo-latar', l.warna);
+      try { logoBersih = { untuk: src, src: l.gambar.toDataURL ? l.gambar.toDataURL('image/png') : src }; } catch (e) { logoBersih = null; }
+      document.querySelectorAll('img[data-logo-usaha], header.nav .logo').forEach((el) => el.setAttribute('src', logoTampil()));
     });
   }
 
@@ -357,7 +366,7 @@
 
   function viewGerbang() {
     const u = usaha();
-    const merek = (sub) => `<div class="merek"><img src="${esc(u.logo || 'icons/logo.png')}" alt="">
+    const merek = (sub) => `<div class="merek"><img data-logo-usaha src="${esc(logoTampil())}" alt="">
       <h1>${esc(u.namaUsaha || 'Kelola')}</h1><p>${sub}</p></div>`;
     const kembali = (ke, teks) => `<button type="button" class="kembali" data-act="gerbang" data-g="${ke}">← ${teks}</button>`;
     const msg = pesan(ui.gerbangMsg);
@@ -1184,27 +1193,27 @@
     return baris.join('\n');
   }
 
-  // Warna pinggir logo (rata-rata piksel di tepi gambar). Putih kalau tepinya transparan.
-  function warnaTepiLogo(logo) {
-    if (!logo) return '#ffffff';
+  // Logo tanpa pinggiran putih/transparan (W.bersihkanTepi) plus warna latarnya.
+  // Hasil disimpan per gambar supaya tidak dihitung ulang.
+  var cacheLogo = new Map();
+  function siapkanLogo(logo) {
+    if (!logo) return { gambar: null, warna: '#ffffff' };
+    const kunci = logo.src || logo;
+    if (cacheLogo.has(kunci)) return cacheLogo.get(kunci);
+    let hasil = { gambar: logo, warna: '#ffffff' };
     try {
-      const n = 32;
       const c = document.createElement('canvas');
-      c.width = c.height = n;
+      c.width = logo.naturalWidth || logo.width;
+      c.height = logo.naturalHeight || logo.height;
       const x = c.getContext('2d');
-      x.drawImage(logo, 0, 0, n, n);
-      const d = x.getImageData(0, 0, n, n).data;
-      let r = 0, g = 0, b = 0, a = 0, k = 0;
-      for (let i = 0; i < n; i++) for (const [px, py] of [[i, 0], [i, n - 1], [0, i], [n - 1, i]]) {
-        const o = (py * n + px) * 4;
-        r += d[o]; g += d[o + 1]; b += d[o + 2]; a += d[o + 3]; k++;
-      }
-      if (a / k < 200) return '#ffffff';
-      const h = (v) => Math.round(v / k).toString(16).padStart(2, '0');
-      return `#${h(r)}${h(g)}${h(b)}`;
-    } catch (e) {
-      return '#ffffff';
-    }
+      x.drawImage(logo, 0, 0, c.width, c.height);
+      const d = x.getImageData(0, 0, c.width, c.height);
+      const warna = W.bersihkanTepi(d.data, c.width, c.height);
+      x.putImageData(d, 0, 0);
+      hasil = { gambar: c, warna: warna || '#ffffff' };
+    } catch (e) { /* gambar tidak bisa dibaca: pakai apa adanya */ }
+    cacheLogo.set(kunci, hasil);
+    return hasil;
   }
 
   // Logo di dalam kotak bersudut bulat yang memakai warna tepi logo itu sendiri,
@@ -1213,16 +1222,18 @@
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(x, y, ukuran, ukuran, sudut);
-    ctx.fillStyle = warnaTepiLogo(logo);
+    const l = siapkanLogo(logo);
+    ctx.fillStyle = l.warna;
     ctx.shadowColor = `rgba(0, 0, 0, ${bayangan})`;
     ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 4;
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.clip();
-    if (logo) {
-      const s = Math.min(ukuran / logo.width, ukuran / logo.height);
-      ctx.drawImage(logo, x + ukuran / 2 - (logo.width * s) / 2, y + ukuran / 2 - (logo.height * s) / 2, logo.width * s, logo.height * s);
+    const g = l.gambar;
+    if (g) {
+      const s = Math.min(ukuran / g.width, ukuran / g.height);
+      ctx.drawImage(g, x + ukuran / 2 - (g.width * s) / 2, y + ukuran / 2 - (g.height * s) / 2, g.width * s, g.height * s);
     }
     ctx.restore();
   }
@@ -1681,7 +1692,7 @@
     const pilihan = palet.filter((h) => W.luminans(h) < 0.45);
     const swatch = (pilihan.length ? pilihan : palet).map((h) => `<button type="button" class="swatch" data-act="warna" data-w="${h}" aria-pressed="${w === h}" style="background:${h}" aria-label="${h}"></button>`).join('');
     return `<div class="group-title">${t('Logo & warna usaha')}</div><div class="card stack" id="merek">
-      <div class="dengan-foto"><img class="logo-pratinjau" src="${esc(p.logo || 'icons/logo.png')}" alt="">
+      <div class="dengan-foto"><img class="logo-pratinjau" data-logo-usaha src="${esc(logoTampil())}" alt="">
         <div class="small muted">${t('Logo ini tampil di pojok kiri atas, juga di HP staff.')}</div></div>
       <div class="foto-aksi">
         <label class="btn kecil"><input type="file" accept="image/*" data-logo hidden>${p.logo ? t('Ganti logo') : t('Pilih logo')}</label>

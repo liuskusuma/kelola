@@ -123,7 +123,78 @@
     };
   }
 
-  const api = { paletLogo, pilihWarna, tema, kontras, luminans, cukupGelap };
+  // Membersihkan pinggiran putih/transparan logo (data RGBA, diubah langsung).
+  // Piksel putih atau transparan yang tersambung ke tepi gambar dibuat transparan,
+  // lalu warna latar diambil dari piksel logo yang berbatasan dengannya.
+  // Kalau bagian itu besar (logo memang berlatar putih), logo tidak diubah.
+  // Hasil: warna latar '#rrggbb', atau null kalau sebaiknya putih.
+  function bersihkanTepi(data, w, h) {
+    const n = w * h;
+    const latar = (i) => {
+      const o = i * 4;
+      if (data[o + 3] < 128) return true;
+      const mn = Math.min(data[o], data[o + 1], data[o + 2]);
+      const mx = Math.max(data[o], data[o + 1], data[o + 2]);
+      return mn >= 225 && mx - mn < 30;
+    };
+    const buang = new Uint8Array(n);
+    const antre = [];
+    const coba = (x, y) => {
+      const i = y * w + x;
+      if (!buang[i] && latar(i)) { buang[i] = 1; antre.push(i); }
+    };
+    for (let x = 0; x < w; x++) { coba(x, 0); coba(x, h - 1); }
+    for (let y = 0; y < h; y++) { coba(0, y); coba(w - 1, y); }
+    for (let k = 0; k < antre.length; k++) {
+      const i = antre[k];
+      const x = i % w;
+      const y = (i - x) / w;
+      if (x > 0) coba(x - 1, y);
+      if (x < w - 1) coba(x + 1, y);
+      if (y > 0) coba(x, y - 1);
+      if (y < h - 1) coba(x, y + 1);
+    }
+    const tetangga = (i, f) => {
+      const x = i % w;
+      if (x > 0) f(i - 1);
+      if (x < w - 1) f(i + 1);
+      if (i >= w) f(i - w);
+      if (i < n - w) f(i + w);
+    };
+    if (!antre.length) {
+      // Tidak ada pinggiran putih: warna latar = rata-rata piksel tepi.
+      let r = 0, g = 0, b = 0, k = 0;
+      for (let i = 0; i < n; i++) {
+        const x = i % w;
+        if (x !== 0 && x !== w - 1 && i >= w && i < n - w) continue;
+        r += data[i * 4]; g += data[i * 4 + 1]; b += data[i * 4 + 2]; k++;
+      }
+      return rgbKeHex([r / k, g / k, b / k]);
+    }
+    if (antre.length > n * 0.35) return null;
+    // Piksel peralihan yang masih terang di batasnya ikut dibuang (satu lapis).
+    const peralihan = [];
+    antre.forEach((i) => tetangga(i, (j) => {
+      if (buang[j]) return;
+      const o = j * 4;
+      if (data[o + 3] < 200 || Math.min(data[o], data[o + 1], data[o + 2]) >= 160) peralihan.push(j);
+    }));
+    peralihan.forEach((j) => { buang[j] = 1; });
+    let r = 0, g = 0, b = 0, k = 0;
+    const dihitung = new Uint8Array(n);
+    for (let i = 0; i < n; i++) if (buang[i]) data[i * 4 + 3] = 0;
+    for (let i = 0; i < n; i++) {
+      if (!buang[i]) continue;
+      tetangga(i, (j) => {
+        if (buang[j] || dihitung[j]) return;
+        dihitung[j] = 1;
+        r += data[j * 4]; g += data[j * 4 + 1]; b += data[j * 4 + 2]; k++;
+      });
+    }
+    return k ? rgbKeHex([r / k, g / k, b / k]) : null;
+  }
+
+  const api = { paletLogo, pilihWarna, tema, kontras, luminans, cukupGelap, bersihkanTepi };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KelolaWarna = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
