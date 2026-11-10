@@ -460,6 +460,27 @@
       color: var(--accent-text); user-select: all;
     }
     img.struk { display: block; width: 100%; max-width: 360px; margin: 0 auto; border-radius: 16px; box-shadow: var(--raised-sm); }
+    /* Tagihan: jatuh tempo, pengingat, gambar tagihan */
+    .tempo { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: 16px; background: color-mix(in srgb, var(--yellow) 22%, var(--cell)); }
+    .tempo b { font-size: 15px; }
+    .tag.telat { background: color-mix(in srgb, var(--danger) 16%, var(--cell)); color: var(--danger); box-shadow: none; }
+    .tag.segera { background: color-mix(in srgb, var(--warn) 18%, var(--cell)); color: var(--warn); box-shadow: none; }
+    .tag.aman { background: color-mix(in srgb, var(--ok) 14%, var(--cell)); color: var(--ok); box-shadow: none; }
+    #tagihan .tag { flex: 0 0 auto; align-self: flex-start; font-size: 12px; padding: 3px 10px; }
+    #tagihan .link.small { padding: 0; font-size: 13px; }
+    .pengingat { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border: 1.5px solid color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 10%, var(--cell)); }
+    .pengingat.telat { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 9%, var(--cell)); }
+    .pengingat .ik { flex: 0 0 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--warn); color: #fff; font-weight: 800; font-size: 20px; }
+    .pengingat.telat .ik { background: var(--danger); }
+    .pengingat .isi { flex: 1; min-width: 0; }
+    .pengingat .ekstra { color: var(--warn); font-weight: 600; }
+    .aksi-tegak { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 0 auto; }
+    nav.tabs .ikon { position: relative; }
+    .tanda-merah { position: absolute; top: -4px; right: 2px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; line-height: 20px; text-align: center; border: 2px solid var(--bg); box-sizing: content-box; }
+    .tagihan-pratinjau { max-height: 300px; overflow: auto; border-radius: 16px; background: var(--well); box-shadow: var(--inset-sm); padding: 10px; }
+    .tagihan-pratinjau img { display: block; width: 100%; max-width: 360px; margin: 0 auto; border-radius: 12px; }
+    hr.pemisah { border: 0; border-top: 1px solid var(--sep); margin: 18px 0 6px; }
+    .nomor-rek { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; letter-spacing: .03em; }
   </style>
 </head>
 <body>
@@ -508,6 +529,7 @@
   <script src="js/grafik.js"></script>
   <script src="js/excel.js"></script>
   <script src="js/penjualan.js"></script>
+  <script src="js/tagihan.js"></script>
   <script src="js/staff.js"></script>
   <script src="js/faceid.js"></script>
   <script src="js/sync.js"></script>

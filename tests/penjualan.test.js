@@ -61,6 +61,23 @@ test('penjualan bayar nanti dari staff ikut membawa nama pelanggan', () => {
   assert.equal(P.sisaTagihan(d), 5000);
 });
 
+test('jatuh tempo ikut tersimpan; tagihan staff memakai jatuh tempo bawaan owner', () => {
+  const { store, kue } = siapkan();
+  const item = [{ produkId: kue.id, nama: 'Kue', qty: 1, harga: 5000 }];
+  const a = P.catatPenjualan(store, H, { waktu: '2026-11-09T01:00:00Z', items: item, metode: 'nanti', pelanggan: { nama: 'A' }, jatuhTempo: '2026-11-16' });
+  assert.equal(a.data.jatuhTempo, '2026-11-16');
+  const b = P.catatPenjualan(store, H, { waktu: '2026-11-09T01:00:00Z', items: item, metode: 'nanti', pelanggan: { nama: 'B' }, jatuhTempo: null });
+  assert.equal('jatuhTempo' in b.data, false);
+  const c = P.catatPenjualan(store, H, { waktu: '2026-11-09T01:00:00Z', items: item, jatuhTempo: '2026-11-16' });
+  assert.equal('jatuhTempo' in c.data, false, 'penjualan tunai tidak punya jatuh tempo');
+  P.olahPenjualanStaff(store, H, [
+    { id: 'j1', staff_id: 's', data: { waktu: '2026-11-09T01:00:00Z', items: item, metode: 'nanti', pelanggan: { nama: 'C' } } },
+    { id: 'j2', staff_id: 's', data: { waktu: '2026-11-09T01:00:00Z', items: item } },
+  ], () => 'Budi', () => '2026-11-16');
+  assert.equal(store.get('j1').data.jatuhTempo, '2026-11-16');
+  assert.equal('jatuhTempo' in store.get('j2').data, false);
+});
+
 test('nomor WhatsApp dirapikan untuk wa.me', () => {
   assert.equal(P.nomorWa('0812-3456-7890'), '6281234567890');
   assert.equal(P.nomorWa('+62 812 3456 7890'), '6281234567890');

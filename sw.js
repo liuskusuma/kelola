@@ -1,6 +1,6 @@
 // Supaya Kelola tetap terbuka tanpa internet.
 // Naikkan VERSION setiap kali ada file yang berubah.
-const VERSION = 'kelola-v23';
+const VERSION = 'kelola-v24';
 const FILES = [
   './',
   'index.html',
@@ -23,6 +23,7 @@ const FILES = [
   'js/grafik.js',
   'js/excel.js',
   'js/penjualan.js',
+  'js/tagihan.js',
   'js/staff.js',
   'js/faceid.js',
   'js/sync.js',
@@ -57,4 +58,31 @@ self.addEventListener('fetch', (e) => {
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true })),
   );
+});
+
+// Notifikasi pengingat tagihan dari server (lihat supabase/functions/pengingat-tagihan).
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { isi: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.judul || 'Kelola', {
+    body: d.isi || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: d.tag || 'kelola-tagihan',
+    data: { url: d.url || './?buka=tagihan' },
+  }));
+});
+
+// Notifikasi disentuh: buka Kelola di daftar tagihan Belum lunas.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const buka = list.find((w) => w.url.startsWith(self.registration.scope));
+    if (buka) {
+      buka.postMessage({ buka: 'tagihan' });
+      return buka.focus();
+    }
+    return self.clients.openWindow(url);
+  }));
 });

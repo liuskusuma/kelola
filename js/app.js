@@ -9,6 +9,7 @@
   const S = KelolaStaff;
   const F = KelolaFaceId;
   const K = KelolaKategori;
+  const T = KelolaTagihan;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
 
@@ -37,6 +38,8 @@
     bayar: '',
     metode: 'tunai', // tunai | qris | nanti
     pelanggan: { nama: '', wa: '' }, // untuk "bayar nanti"
+    jatuhTempo: undefined, // jatuh tempo pilihan di kasir: undefined = bawaan, null = tanpa, 'YYYY-MM-DD'
+    notifMsg: null,
     trxTerakhir: null, // penjualan yang baru disimpan, untuk tombol struk
     produkTab: 'produk', // produk | bahan
     kategori: null, // filter kategori di kasir: null = semua, '' = Lainnya
@@ -315,9 +318,10 @@
     document.body.classList.toggle('hanya-kasir', hanyaKasir());
     terapkanWarnaUsaha();
     renderBadge();
+    renderTandaLaporan();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
-    viewEl.innerHTML = viewTawarFaceId() + views[ui.view]();
+    viewEl.innerHTML = viewTawarFaceId() + (ui.view === 'kasir' || ui.view === 'laporan' ? viewPengingat() : '') + views[ui.view]();
   }
 
   // Label kecil di bawah judul: siapa yang sedang memakai aplikasi.
@@ -465,7 +469,8 @@
     ui.gantiAkun = false;
     ui.gerbang = 'pilih';
     ui.gerbangMsg = null;
-    ui.view = 'kasir';
+    ui.view = m === 'owner' && ui.bukaTagihan ? 'laporan' : 'kasir';
+    ui.bukaTagihan = false;
     ui.cart = {};
     render();
     window.scrollTo(0, 0);
@@ -781,8 +786,8 @@
           .map(([k, l]) => `<button data-act="metode" data-m="${k}" aria-pressed="${ui.metode === k}">${l}</button>`).join('')}</div>
         ${isianBayar(total, bayar)}
         <div class="row" style="margin-top:16px">
-          <button class="btn" data-act="kosongkan">${t('Kosongkan')}</button>
-          <button class="btn primary" data-act="simpan-penjualan">${t(ui.metode === 'qris' ? 'Sudah dibayar, simpan' : ui.metode === 'nanti' ? 'Simpan sebagai tagihan' : 'Simpan penjualan')}</button>
+          <button class="btn" data-act="kosongkan">${t('Batal')}</button>
+          <button class="btn primary" data-act="simpan-penjualan">${t(ui.metode === 'qris' ? 'Sudah dibayar, simpan' : ui.metode !== 'nanti' ? 'Simpan penjualan' : modeStaff() ? 'Simpan sebagai tagihan' : 'Simpan & tagih')}</button>
         </div></div>`
       : '';
     const petunjuk = items.length ? '' : `<div class="foot" style="margin:0 8px 14px">${t('Ketuk produk untuk menambahkannya ke keranjang.')}</div>`;
@@ -802,6 +807,7 @@
       return `<div class="stack" style="margin-top:14px">
           <label class="field"><span>${t('Nama pembeli')}</span><input id="pelangganNama" list="daftarPelanggan" autocomplete="off" value="${esc(ui.pelanggan.nama)}" placeholder="${t('Contoh: Bu Ani')}"></label>
           <label class="field"><span>${t('No. WhatsApp (boleh kosong)')}</span><input id="pelangganWa" type="tel" inputmode="tel" value="${esc(ui.pelanggan.wa)}" placeholder="0812…"></label>
+          ${modeStaff() ? '' : barisJatuhTempo()}
         </div>
         <datalist id="daftarPelanggan">${kenal.map((p) => `<option value="${esc(p.nama)}">`).join('')}</datalist>
         <div class="small muted" style="margin-top:8px">${t('Penjualan dicatat sebagai tagihan. Tagih lewat WhatsApp dan tandai lunas di Laporan.')}</div>`;
@@ -813,6 +819,42 @@
   }
 
   // Pelanggan yang pernah "bayar nanti", terbaru dulu, untuk isian otomatis.
+  // Jatuh tempo tagihan yang sedang dicatat di kasir.
+  function jatuhTempoKasir() {
+    if (ui.jatuhTempo !== undefined) return ui.jatuhTempo;
+    return T.jatuhTempoBaru(new Date(), T.pengaturan(profil()).jatuhTempo);
+  }
+
+  const tanggalPanjang = (ymd) => new Date(ymd + 'T12:00:00').toLocaleDateString(lokal(), { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+  const tanggalPendek = (ymd) => new Date(ymd + 'T12:00:00').toLocaleDateString(lokal(), { day: 'numeric', month: 'short' });
+
+  function barisJatuhTempo() {
+    const jt = jatuhTempoKasir();
+    const hari = jt ? T.selisihHari(T.tanggalLokal(new Date()), jt) : 0;
+    return `<div class="tempo" id="jatuhTempoKasir"><div><div class="small muted">${t('Jatuh tempo')}</div>
+      <b>${jt ? esc(tanggalPanjang(jt)) : t('Tanpa jatuh tempo')}</b>${jt ? ` <span class="small muted">(${t('{n} hari', { n: hari })})</span>` : ''}</div>
+      <button type="button" class="link" data-act="ubah-tempo">${t('Ubah')}</button></div>`;
+  }
+
+  // Pilih jatuh tempo: untuk tagihan di kasir, atau tagihan yang sudah tersimpan (trxId).
+  function bukaUbahTempo(trxId) {
+    const trx = trxId ? store.get(trxId) : null;
+    const jt = trx ? trx.data.jatuhTempo || '' : jatuhTempoKasir() || '';
+    const dasar = trx ? T.tanggalLokal(trx.data.waktu) : T.tanggalLokal(new Date());
+    dialog.innerHTML = `<form id="formTempo" class="stack" method="dialog">
+      <div class="row"><h3>${t('Jatuh tempo')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      ${trx ? `<div class="small muted">${t('{nama} · sisa {sisa}', { nama: esc(trx.data.pelanggan.nama), sisa: rp(P.sisaTagihan(trx.data)) })}</div>` : ''}
+      <div class="seg kecil" role="group">${T.PILIHAN_TEMPO.map((n) => {
+        const tgl = n ? T.tambahHari(dasar, n) : '';
+        return `<button type="button" data-act="tempo-hari" data-tgl="${tgl}" aria-pressed="${tgl === jt}">${n ? t('{n} hari', { n }) : t('Tanpa')}</button>`;
+      }).join('')}</div>
+      <label class="field"><span>${t('Atau pilih tanggal')}</span><input type="date" name="tanggal" value="${esc(jt)}"></label>
+      <input type="hidden" name="trxId" value="${esc(trxId || '')}">
+      <button class="btn primary">${t('Pakai tanggal ini')}</button>
+    </form>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
   function daftarPelanggan() {
     const map = new Map();
     store.list('transaksi').filter((r) => r.data.pelanggan)
@@ -1084,8 +1126,17 @@
     return store.list('transaksi').filter((r) => P.sisaTagihan(r.data) > 0).sort((a, b) => a.data.waktu.localeCompare(b.data.waktu));
   }
 
+  // Label jatuh tempo: "Lewat 5 hari", "Hari ini", "Besok", "6 hari lagi".
+  function labelTempo(jt) {
+    const n = T.selisihHari(T.tanggalLokal(new Date()), jt);
+    if (n < 0) return `<span class="tag telat">${t('Lewat {n} hari', { n: -n })}</span>`;
+    if (n === 0) return `<span class="tag segera">${t('Hari ini')}</span>`;
+    if (n === 1) return `<span class="tag segera">${t('Besok')}</span>`;
+    return `<span class="tag aman">${t('{n} hari lagi', { n })}</span>`;
+  }
+
   function viewTagihan() {
-    const list = tagihanTerbuka();
+    const list = T.urutkan(tagihanTerbuka());
     if (!list.length) return '';
     const total = list.reduce((s, r) => s + P.sisaTagihan(r.data), 0);
     const hari = (iso) => Math.floor((Date.now() - Date.parse(iso)) / 864e5);
@@ -1093,52 +1144,260 @@
       <div class="card" id="tagihan"><ul class="list">${list.map((r) => {
         const d = r.data;
         const umur = hari(d.waktu);
+        const jt = T.tanggalSah(d.jatuhTempo) ? d.jatuhTempo : null;
+        const kapan = jt
+          ? `<button class="link small" data-act="ubah-tempo-trx" data-id="${r.id}">${t('jatuh tempo {tanggal}', { tanggal: esc(tanggalPendek(jt)) })}</button>`
+          : `${umur ? t('{n} hari lalu', { n: umur }) : t('hari ini')} · <button class="link small" data-act="ubah-tempo-trx" data-id="${r.id}">${t('atur jatuh tempo')}</button>`;
         return `<li class="stack"><div class="row"><div><div class="nama">${esc(d.pelanggan.nama)}</div>
-            <div class="small muted">${t('Sisa {sisa} dari {total}', { sisa: rp(P.sisaTagihan(d)), total: rp(d.total) })} · ${umur ? t('{n} hari lalu', { n: umur }) : t('hari ini')}</div></div></div>
+            <div class="small muted">${t('Sisa {sisa} dari {total}', { sisa: rp(P.sisaTagihan(d)), total: rp(d.total) })} · ${kapan}</div></div>${jt ? labelTempo(jt) : ''}</div>
           <div class="row" style="justify-content:flex-end;gap:8px">
             <button class="btn kecil" data-act="tagih" data-id="${r.id}">${t('Tagih via WA')}</button>
             <button class="btn kecil primary" data-act="catat-bayar" data-id="${r.id}">${t('Catat bayar')}</button></div></li>`;
       }).join('')}</ul></div>`;
   }
 
+  // Pesan WhatsApp yang pendek. Nomor rekening dan nominal ditulis di baris sendiri,
+  // hanya angka, supaya pembeli bisa langsung menyalinnya ke m-banking.
   function teksTagihan(d) {
-    const p = usaha();
-    const masuk = d.total - P.sisaTagihan(d);
-    const tgl = new Date(d.waktu).toLocaleDateString(lokal(), { day: 'numeric', month: 'long', year: 'numeric' });
-    return [
-      t('Halo {nama}, berikut tagihan dari {usaha}:', { nama: d.pelanggan.nama, usaha: p.namaUsaha || 'Kelola' }),
-      t('Tanggal: {tanggal}', { tanggal: tgl }), '',
-      ...d.items.map((i) => `- ${i.nama} ×${angka.format(i.qty)} = ${rp(i.qty * i.harga)}`), '',
-      `${t('Total')}: ${rp(d.total)}`,
-      masuk > 0 ? `${t('Sudah dibayar')}: ${rp(masuk)}` : null,
-      `*${t('Sisa tagihan')}: ${rp(P.sisaTagihan(d))}*`, '',
-      p.qris ? t('Bisa dibayar tunai atau lewat QRIS. Terima kasih.') : t('Terima kasih.'),
-    ].filter((x) => x !== null).join('\n');
+    const p = profil();
+    const sisa = Math.round(P.sisaTagihan(d));
+    const baris = [t('Halo {nama}, tagihan dari {usaha} {jumlah}.', { nama: d.pelanggan.nama, usaha: p.namaUsaha || 'Kelola', jumlah: rp(sisa) })];
+    T.daftarRekening(p).forEach((r) => {
+      baris.push('', r.nama ? t('Nomor rekening {bank} a.n. {nama}:', { bank: r.bank, nama: r.nama }) : t('Nomor rekening {bank}:', { bank: r.bank }), T.nomorPolos(r.nomor));
+    });
+    baris.push('', t('Nominal:'), String(sisa));
+    if (p.qris) baris.push('', t('Bisa juga bayar lewat QRIS di gambar.'));
+    baris.push('', t('Terima kasih 🙏'));
+    return baris.join('\n');
   }
 
-  function bukaTagih(id) {
+  function muatGambar(src) {
+    if (!src) return Promise.resolve(null);
+    return new Promise((ok) => {
+      const img = new Image();
+      img.onload = () => ok(img);
+      img.onerror = () => ok(null);
+      img.src = src;
+    });
+  }
+
+  // Gambar tagihan untuk dikirim ke pembeli: logo dan warna usaha, rincian belanja,
+  // sisa bayar, rekening, dan QRIS (kalau sudah disimpan). Lebar 720 px.
+  async function gambarTagihan(d) {
+    const p = profil();
+    if (document.fonts && document.fonts.load) await document.fonts.load('italic 800 40px "Exo 2"').catch(() => {});
+    const [logo, qris] = await Promise.all([muatGambar(p.logo || 'icons/logo.png'), muatGambar(p.qris)]);
+    const tm = temaUsaha();
+    const utama = tm ? tm.terang['--navy'] : '#0a2a6e';
+    const aksen = tm ? tm.terang['--yellow'] : '#fecb10';
+    const W = 720;
+    const pad = 44;
+    const huruf = (ukuran, tebal) => `${tebal ? '700 ' : ''}${ukuran}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    const angkaFont = (ukuran) => `700 ${ukuran}px ui-monospace, Menlo, Consolas, monospace`;
+    const sisa = P.sisaTagihan(d);
+    const masuk = d.total - sisa;
+    const rekening = T.daftarRekening(p);
+    const jt = T.tanggalSah(d.jatuhTempo) ? d.jatuhTempo : null;
+    const tglBeli = new Date(d.waktu).toLocaleDateString(lokal(), { day: 'numeric', month: 'long', year: 'numeric' });
+    const kotak = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+
+    // Digambar dua kali: pertama untuk mengukur tinggi, lalu di kanvas ukuran pas.
+    const gambar = (ctx) => {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, W, 5000);
+      // Kepala: warna usaha, logo, nama usaha.
+      ctx.fillStyle = utama;
+      ctx.fillRect(0, 0, W, 170);
+      ctx.fillStyle = '#ffffff';
+      kotak(ctx, pad, 37, 96, 96, 22); ctx.fill();
+      if (logo) {
+        const s = Math.min(84 / logo.width, 84 / logo.height);
+        ctx.drawImage(logo, pad + 48 - (logo.width * s) / 2, 85 - (logo.height * s) / 2, logo.width * s, logo.height * s);
+      }
+      const xt = pad + 120;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = aksen;
+      ctx.font = `800 20px "Exo 2", "Segoe UI", sans-serif`;
+      ctx.fillText(t('TAGIHAN'), xt, 64);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `italic 800 38px "Exo 2", "Segoe UI", sans-serif`;
+      ctx.fillText(p.namaUsaha || 'Kelola', xt, 106, W - xt - pad);
+      ctx.font = huruf(21);
+      ctx.globalAlpha = 0.85;
+      ctx.fillText(tglBeli, xt, 138, W - xt - pad);
+      ctx.globalAlpha = 1;
+      let y = 220;
+      const kiriKanan = (kiri, kanan, warnaKiri, warnaKanan, font, fontKanan) => {
+        ctx.font = font; ctx.textAlign = 'left'; ctx.fillStyle = warnaKiri; ctx.fillText(kiri, pad, y, W / 2);
+        ctx.font = fontKanan || font; ctx.textAlign = 'right'; ctx.fillStyle = warnaKanan; ctx.fillText(kanan, W - pad, y, W / 2 - pad);
+      };
+      kiriKanan(t('Untuk'), d.pelanggan.nama, '#5d6a88', '#13203f', huruf(23), huruf(23, true));
+      if (jt) {
+        y += 38;
+        const lewat = T.selisihHari(T.tanggalLokal(new Date()), jt) < 0;
+        kiriKanan(t('Jatuh tempo'), tanggalPanjang(jt), '#5d6a88', lewat ? '#c8372d' : '#13203f', huruf(23), huruf(23, true));
+      }
+      const garis = () => {
+        ctx.strokeStyle = '#cfd6e4'; ctx.lineWidth = 2; ctx.setLineDash([9, 8]);
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke(); ctx.setLineDash([]);
+      };
+      y += 30; garis(); y += 46;
+      d.items.forEach((i) => {
+        kiriKanan(`${i.nama} ×${angka.format(i.qty)}`, rp(i.qty * i.harga), '#13203f', '#13203f', huruf(25));
+        y += 40;
+      });
+      y -= 12; garis(); y += 46;
+      kiriKanan(t('Total'), rp(d.total), '#13203f', '#13203f', huruf(25));
+      if (masuk > 0) { y += 40; kiriKanan(t('Sudah dibayar'), '− ' + rp(masuk), '#12805c', '#12805c', huruf(25)); }
+      // Sisa bayar, besar.
+      y += 28;
+      ctx.fillStyle = '#fff6d1';
+      kotak(ctx, pad, y, W - pad * 2, 96, 22); ctx.fill();
+      ctx.textAlign = 'left'; ctx.fillStyle = '#13203f'; ctx.font = huruf(25, true);
+      ctx.fillText(t('Sisa bayar'), pad + 26, y + 58);
+      ctx.textAlign = 'right'; ctx.fillStyle = utama; ctx.font = `800 44px "Exo 2", "Segoe UI", sans-serif`;
+      ctx.fillText(rp(sisa), W - pad - 26, y + 63, W / 2);
+      y += 96;
+      const judulKecil = (teks) => {
+        y += 52;
+        ctx.textAlign = 'left'; ctx.fillStyle = '#5d6a88'; ctx.font = `700 19px "Exo 2", "Segoe UI", sans-serif`;
+        ctx.fillText(teks, pad, y);
+        y += 16;
+      };
+      if (rekening.length) {
+        judulKecil(t('TRANSFER KE'));
+        rekening.forEach((r) => {
+          ctx.strokeStyle = '#e1e6f0'; ctx.lineWidth = 2;
+          kotak(ctx, pad, y, W - pad * 2, 116, 20); ctx.stroke();
+          ctx.textAlign = 'left';
+          ctx.fillStyle = utama; ctx.font = huruf(21, true);
+          ctx.fillText(r.bank, pad + 24, y + 36, W - pad * 2 - 48);
+          ctx.fillStyle = '#13203f'; ctx.font = angkaFont(32);
+          ctx.fillText(T.nomorPolos(r.nomor), pad + 24, y + 76, W - pad * 2 - 48);
+          if (r.nama) { ctx.fillStyle = '#5d6a88'; ctx.font = huruf(20); ctx.fillText(t('a.n. {nama}', { nama: r.nama }), pad + 24, y + 104, W - pad * 2 - 48); }
+          y += 128;
+        });
+        y -= 12;
+      }
+      if (qris) {
+        judulKecil(rekening.length ? t('ATAU SCAN QRIS') : t('SCAN QRIS'));
+        const lebar = Math.min(420, qris.width);
+        const tinggi = qris.height * (lebar / qris.width);
+        ctx.strokeStyle = '#e1e6f0'; ctx.lineWidth = 2;
+        kotak(ctx, pad, y, W - pad * 2, tinggi + 84, 20); ctx.stroke();
+        ctx.drawImage(qris, (W - lebar) / 2, y + 20, lebar, tinggi);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#5d6a88'; ctx.font = huruf(21);
+        ctx.fillText(t('Masukkan nominal {jumlah}', { jumlah: rp(sisa) }), W / 2, y + tinggi + 60, W - pad * 2 - 32);
+        y += tinggi + 84;
+      }
+      y += 40;
+      ctx.fillStyle = '#f2f5fa';
+      ctx.fillRect(0, y, W, 80);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#5d6a88'; ctx.font = huruf(22);
+      ctx.fillText(t('Terima kasih 🙏'), W / 2, y + 48);
+      return y + 80;
+    };
+    const ukur = document.createElement('canvas');
+    ukur.width = W; ukur.height = 5000;
+    const tinggi = Math.ceil(gambar(ukur.getContext('2d')));
+    const c = document.createElement('canvas');
+    c.width = W; c.height = tinggi;
+    gambar(c.getContext('2d'));
+    return c;
+  }
+
+  // baru = tagihan yang baru saja disimpan di kasir.
+  async function bukaTagih(id, baru) {
     const r = store.get(id);
     if (!r || !r.data.pelanggan) return;
     const d = r.data;
     const teks = teksTagihan(d);
     const no = P.nomorWa(d.pelanggan.wa);
-    const bisaBagiQris = !!(usaha().qris && navigator.canShare && window.File);
+    const waUrl = `https://wa.me/${no}?text=${encodeURIComponent(teks)}`;
+    const canvas = await gambarTagihan(d);
+    const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/png'));
+    if (ui.struk && ui.struk.url) URL.revokeObjectURL(ui.struk.url);
+    const nama = `tagihan-${d.pelanggan.nama.replace(/[^\w]+/g, '-').toLowerCase()}.png`;
+    ui.struk = { blob, url: blob ? URL.createObjectURL(blob) : '', teks, nama };
+    const file = blob && window.File ? new File([blob], nama, { type: 'image/png' }) : null;
+    const bisaBagi = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
     dialog.innerHTML = `<div class="stack" id="dialogTagih">
-      <div class="row"><h3>${t('Tagih {nama}', { nama: esc(d.pelanggan.nama) })}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
-      <pre class="pesan-wa">${esc(teks)}</pre>
-      <a class="btn primary block" href="https://wa.me/${no}?text=${encodeURIComponent(teks)}" target="_blank" rel="noopener">${t('Kirim lewat WhatsApp')}</a>
+      <div class="row"><h3>${baru ? t('Kirim tagihan ke {nama}?', { nama: esc(d.pelanggan.nama) }) : t('Tagih {nama}', { nama: esc(d.pelanggan.nama) })}</h3>
+        ${baru ? '' : `<button type="button" class="link" data-act="tutup">${t('Tutup')}</button>`}</div>
+      <div class="tagihan-pratinjau"><img id="gambarTagihan" src="${ui.struk.url}" alt="${t('Gambar tagihan')}"></div>
+      <div class="field"><span class="lbl">${t('Pesan WA')}</span><pre class="pesan-wa">${esc(teks)}</pre></div>
+      ${bisaBagi
+        ? `<button class="btn primary block" data-act="tagih-bagikan">${t('Kirim ke WhatsApp')}</button>
+           <a class="btn block" id="tagihWa" href="${waUrl}" target="_blank" rel="noopener">${t('Kirim pesan saja')}</a>`
+        : `<a class="btn primary block" id="tagihWa" href="${waUrl}" target="_blank" rel="noopener">${t('Kirim ke WhatsApp')}</a>
+           <a class="btn block" href="${ui.struk.url}" download="${esc(nama)}">${t('Simpan gambar tagihan')}</a>`}
       ${no ? '' : `<div class="small muted">${t('Nomor WhatsApp belum dicatat, jadi pilih kontaknya sendiri di WhatsApp.')}</div>`}
-      ${bisaBagiQris ? `<button class="btn block" data-act="tagih-qris">${t('Kirim gambar QRIS')}</button>` : ''}
+      ${T.daftarRekening(profil()).length || profil().qris ? '' : `<div class="small muted">${t('Tambahkan nomor rekening atau QRIS di Akun → Cara bayar & tagihan supaya ikut terkirim.')}</div>`}
+      ${baru ? `<button class="btn block" data-act="tutup">${t('Nanti saja')}</button>` : ''}
     </div>`;
     if (!dialog.open) dialog.showModal();
   }
 
-  async function bagikanQris() {
+  // Kirim gambar tagihan + pesannya lewat menu bagikan HP (pilih WhatsApp, lalu kontaknya).
+  async function bagikanTagihan() {
+    if (!ui.struk || !ui.struk.blob) return;
+    const file = new File([ui.struk.blob], ui.struk.nama, { type: 'image/png' });
     try {
-      const blob = await (await fetch(usaha().qris)).blob();
-      const file = new File([blob], 'qris.jpg', { type: blob.type || 'image/jpeg' });
-      if (navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
-    } catch (e) { /* dibatalkan atau tidak didukung */ }
+      await navigator.share({ files: [file], text: ui.struk.teks });
+    } catch (e) { /* pengguna membatalkan */ }
+  }
+
+  // ---------- Pengingat jatuh tempo (di dalam aplikasi) ----------
+
+  const KEY_TUNDA = 'kelola:pengingat';
+  const bacaTunda = () => { try { return localStorage.getItem(KEY_TUNDA); } catch (e) { return null; } };
+
+  function infoPengingat() {
+    if (hanyaKasir() || modeStaff()) return null;
+    const set = T.pengaturan(profil());
+    if (!set.ingatkan) return null;
+    const h = T.pengingat(tagihanTerbuka(), T.tanggalLokal(new Date()), set.mulai, P.sisaTagihan);
+    return h.lewat.length || h.segera.length ? h : null;
+  }
+
+  function viewPengingat() {
+    const h = infoPengingat();
+    if (!h || bacaTunda() === T.tanggalLokal(new Date())) return '';
+    const nama = (list) => esc(list.slice(0, 3).map((r) => r.data.pelanggan.nama).join(', ') + (list.length > 3 ? ', …' : ''));
+    const lewat = h.lewat.length > 0;
+    const daftar = lewat ? h.lewat : h.segera;
+    const judul = lewat ? t('{n} tagihan lewat jatuh tempo', { n: h.lewat.length }) : t('{n} tagihan segera jatuh tempo', { n: h.segera.length });
+    return `<div class="card pengingat${lewat ? ' telat' : ''}" id="pengingat">
+      <div class="ik" aria-hidden="true">!</div>
+      <div class="isi"><b>${judul}</b><div class="small muted">${nama(daftar)} · ${rp(lewat ? h.totalLewat : h.totalSegera)}</div>
+        ${lewat && h.segera.length ? `<div class="small ekstra">${t('+{n} segera jatuh tempo', { n: h.segera.length })}</div>` : ''}</div>
+      <div class="aksi-tegak"><button class="btn kecil primary" data-act="lihat-tagihan">${t('Lihat')}</button>
+        <button class="link small" data-act="tunda-pengingat">${t('Nanti')}</button></div></div>`;
+  }
+
+  function lihatTagihan() {
+    ui.view = 'laporan';
+    render();
+    const el = $('#tagihan');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // "Nanti": sembunyikan kartu pengingat sampai besok (per perangkat).
+  function tundaPengingat() {
+    try { localStorage.setItem(KEY_TUNDA, T.tanggalLokal(new Date())); } catch (e) { /* abaikan */ }
+    render();
+  }
+
+  // Tanda merah di menu Laporan: jumlah tagihan yang lewat jatuh tempo.
+  function renderTandaLaporan() {
+    const tombol = $('nav.tabs button[data-go="laporan"]');
+    const h = infoPengingat();
+    const n = h ? h.lewat.length : 0;
+    let tanda = $('.tanda-merah', tombol);
+    if (!n) { if (tanda) tanda.remove(); return; }
+    if (!tanda) { tanda = document.createElement('span'); tanda.className = 'tanda-merah'; $('.ikon', tombol).appendChild(tanda); }
+    tanda.textContent = n > 9 ? '9+' : String(n);
+    tanda.setAttribute('aria-label', t('{n} tagihan lewat jatuh tempo', { n }));
   }
 
   function bukaCatatBayar(id) {
@@ -1284,7 +1543,7 @@
       modeOwner,
       viewAkunHp() && jadiLipat('akunHp', viewAkunHp()),
       jadiLipat('profil', profilUsaha),
-      jadiLipat('qris', viewQris()),
+      jadiLipat('qris', viewCaraBayar()),
       jadiLipat('merek', viewMerek()),
       jadiLipat('pengaturan', viewPengaturan()),
       jadiLipat('cloud', viewCloud(), !cloud.user),
@@ -1383,16 +1642,156 @@
     </div>`;
   }
 
-  // Owner: gambar QRIS untuk ditunjukkan ke pembeli di kasir.
-  function viewQris() {
-    const q = profil().qris;
-    return `<div class="group-title">${t('Pembayaran QRIS')}</div><div class="card stack" id="qrisSetel">
-      <div class="small muted">${t('Simpan gambar QRIS usaha Anda. Di kasir akan muncul tombol QRIS untuk ditunjukkan ke pembeli. Hanya owner yang bisa mengganti gambar ini.')}</div>
-      ${q ? `<img class="qris-gambar" src="${esc(q)}" alt="QRIS">` : ''}
-      <div class="foto-aksi">
-        <label class="btn kecil"><input type="file" accept="image/*" data-qris hidden>${q ? t('Ganti gambar QRIS') : t('Pilih gambar QRIS')}</label>
-        ${q ? `<button type="button" class="link small danger" data-act="hapus-qris">${t('Hapus QRIS')}</button>` : ''}
-      </div></div>`;
+  function ubahProfil(patch) {
+    change(() => store.put('profil', Object.assign({}, profil(), patch), 'profil'));
+  }
+
+  // Owner: cara pembeli membayar (QRIS, rekening) dan pengaturan tagihan "bayar nanti".
+  function viewCaraBayar() {
+    const p = profil();
+    const q = p.qris;
+    const rek = p.rekening || [];
+    const set = T.pengaturan(p);
+    const pilih = (nama, nilai, opsi) => `<div class="seg kecil" role="group">${opsi.map(([k, l]) =>
+      `<button data-act="setel-tagihan" data-nama="${nama}" data-nilai="${k}" aria-pressed="${nilai === k}">${l}</button>`).join('')}</div>`;
+    return `<div class="group-title">${t('Cara bayar & tagihan')}</div><div class="card stack" id="caraBayar">
+      <div id="qrisSetel" class="stack">
+        <div><div class="label">QRIS</div><div class="small muted">${t('Tampil di kasir dan di gambar tagihan. Hanya owner yang bisa mengganti gambar ini.')}</div></div>
+        ${q ? `<img class="qris-gambar" src="${esc(q)}" alt="QRIS">` : ''}
+        <div class="foto-aksi">
+          <label class="btn kecil"><input type="file" accept="image/*" data-qris hidden>${q ? t('Ganti gambar QRIS') : t('Pilih gambar QRIS')}</label>
+          ${q ? `<button type="button" class="link small danger" data-act="hapus-qris">${t('Hapus QRIS')}</button>` : ''}
+        </div>
+      </div>
+      <hr class="pemisah">
+      <div><div class="label">${t('Rekening & e-wallet')}</div><div class="small muted">${t('Tampil di gambar tagihan dan pesan WhatsApp.')}</div></div>
+      ${rek.length ? `<ul class="list" id="daftarRekening">${rek.map((r) => `<li class="row"><div><div class="nama">${esc(r.bank)}</div>
+          <div class="nomor-rek">${esc(r.nomor)}</div>${r.nama ? `<div class="small muted">${t('a.n. {nama}', { nama: esc(r.nama) })}</div>` : ''}</div>
+          <button class="btn kecil" data-act="rekening-ubah" data-id="${esc(r.id)}">${t('Ubah')}</button></li>`).join('')}</ul>` : ''}
+      <button class="btn block" data-act="rekening-baru">${t('+ Tambah rekening / e-wallet')}</button>
+      <hr class="pemisah">
+      <div class="field"><span class="lbl">${t('Jatuh tempo tagihan baru')}</span>
+        ${pilih('jatuhTempo', set.jatuhTempo, T.PILIHAN_TEMPO.map((n) => [n, n ? t('{n} hari', { n }) : t('Tanpa')]))}
+        <div class="small muted" style="margin-top:6px">${t('Dihitung dari tanggal beli. Bisa diubah setiap kali mencatat tagihan.')}</div></div>
+      <div class="field"><span class="lbl">${t('Ingatkan saya saat aplikasi dibuka')}</span>
+        ${pilih('ingatkan', set.ingatkan, [[true, t('Ya')], [false, t('Tidak')]])}</div>
+      ${set.ingatkan ? `<div class="field"><span class="lbl">${t('Mulai ingatkan')}</span>
+        ${pilih('mulai', set.mulai, [[0, t('Hari H')], [1, t('H-1')], [3, t('H-3')]])}</div>` : ''}
+      <hr class="pemisah">
+      ${viewNotif()}
+    </div>`;
+  }
+
+  const DAFTAR_BANK = ['BCA', 'BRI', 'Mandiri', 'BNI', 'BSI', 'CIMB Niaga', 'Permata', 'BTN', 'Danamon', 'SeaBank', 'Bank Jago', 'blu by BCA Digital', 'DANA', 'GoPay', 'OVO', 'ShopeePay', 'LinkAja'];
+
+  function bukaFormRekening(id) {
+    const r = (profil().rekening || []).find((x) => x.id === id) || { bank: '', nomor: '', nama: '' };
+    dialog.innerHTML = `<form id="formRekening" class="stack" method="dialog">
+      <div class="row"><h3>${id ? t('Ubah rekening') : t('Tambah rekening')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <label class="field"><span>${t('Bank atau e-wallet')}</span><input name="bank" list="daftarBank" required autocomplete="off" value="${esc(r.bank)}" placeholder="${t('Contoh: BCA atau DANA')}"></label>
+      <datalist id="daftarBank">${DAFTAR_BANK.map((b) => `<option value="${b}">`).join('')}</datalist>
+      <label class="field"><span>${t('Nomor rekening / nomor HP')}</span><input name="nomor" required inputmode="numeric" autocomplete="off" value="${esc(r.nomor)}" placeholder="1234567890"></label>
+      <label class="field"><span>${t('Atas nama (boleh kosong)')}</span><input name="nama" autocomplete="off" value="${esc(r.nama)}" placeholder="${t('Contoh: Sari Wulandari')}"></label>
+      <input type="hidden" name="rekId" value="${esc(id || '')}">
+      <button class="btn primary">${t('Simpan')}</button>
+      ${id ? `<button type="button" class="btn danger" data-act="rekening-hapus" data-id="${esc(id)}">${t('Hapus rekening')}</button>` : ''}
+    </form>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
+  // ---------- Notifikasi HP (Web Push) ----------
+  // Server (supabase/notifikasi.sql + Edge Function pengingat-tagihan) mengirim
+  // pengingat jatuh tempo setiap pagi ke HP yang menyalakan notifikasi.
+
+  const KEY_NOTIF = 'kelola:notif';
+  const FUNGSI_NOTIF = 'pengingat-tagihan';
+  const notifDidukung = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const iPhoneBelumDipasang = () => /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone && !matchMedia('(display-mode: standalone)').matches;
+
+  function notifTersimpan() {
+    try {
+      const n = JSON.parse(localStorage.getItem(KEY_NOTIF) || 'null');
+      return n && cloud.user && n.userId === cloud.user.id ? n : null;
+    } catch (e) { return null; }
+  }
+
+  function viewNotif() {
+    const judul = `<div><div class="label">${t('Notifikasi di HP')}</div><div class="small muted">${t('Pengingat tagihan jatuh tempo setiap pagi jam 08.00, walau aplikasi tertutup.')}</div></div>`;
+    let isi;
+    if (!cloudReady || !cloud.user) isi = `<div class="small muted">${t('Masuk ke akun dulu (Simpan ke cloud) supaya notifikasi bisa dikirim.')}</div>`;
+    else if (iPhoneBelumDipasang()) isi = `<div class="small muted">${t('Di iPhone: buka Kelola di Safari, ketuk Bagikan → Tambahkan ke Layar Utama, lalu buka Kelola dari ikon itu dan nyalakan notifikasi di sini.')}</div>`;
+    else if (!notifDidukung()) isi = `<div class="small muted">${t('Browser ini belum mendukung notifikasi.')}</div>`;
+    else if (Notification.permission === 'denied') isi = `<div class="small muted">${t('Notifikasi untuk Kelola diblokir. Izinkan lewat pengaturan HP atau browser, lalu coba lagi.')}</div>`;
+    else if (notifTersimpan() && Notification.permission === 'granted') {
+      isi = `<div class="row"><span class="aktif">${t('Aktif di HP ini')}</span>
+        <div class="aksi"><button class="btn kecil" data-act="notif-uji">${t('Kirim uji')}</button><button class="btn kecil" data-act="notif-matikan">${t('Matikan')}</button></div></div>`;
+    } else isi = `<button class="btn block" data-act="notif-nyalakan">${t('Nyalakan notifikasi')}</button>`;
+    return `<div id="notifSetel" class="stack">${judul}${isi}${pesan(ui.notifMsg)}</div>`;
+  }
+
+  const base64Url = (s) => {
+    const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
+    return Uint8Array.from(b, (c) => c.charCodeAt(0));
+  };
+
+  async function panggilFungsiNotif(body) {
+    const { data, error } = await cloud.client.functions.invoke(FUNGSI_NOTIF, { body });
+    if (error) throw error;
+    return data || {};
+  }
+
+  async function nyalakanNotif() {
+    if (!cloud.user || !notifDidukung()) return;
+    ui.notifMsg = null;
+    try {
+      const izin = await Notification.requestPermission();
+      if (izin !== 'granted') { ui.notifMsg = { type: 'err', text: t('Izin notifikasi tidak diberikan.') }; render(); return; }
+      let kunci;
+      try { kunci = (await panggilFungsiNotif({ aksi: 'kunci' })).publik; } catch (e) { kunci = null; }
+      if (!kunci) { ui.notifMsg = { type: 'err', text: t('Server notifikasi belum disiapkan. Ikuti panduan pemasangan notifikasi, lalu coba lagi.') }; render(); return; }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64Url(kunci) });
+      const j = sub.toJSON();
+      const { error } = await cloud.client.from('push_langganan').upsert({
+        endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: cloud.user.id, bahasa: setel.bahasa,
+      }, { onConflict: 'endpoint' });
+      if (error) throw error;
+      localStorage.setItem(KEY_NOTIF, JSON.stringify({ userId: cloud.user.id, endpoint: j.endpoint }));
+      ui.notifMsg = { type: 'ok', text: t('Notifikasi aktif. Ketuk "Kirim uji" untuk mencoba.') };
+    } catch (e) {
+      ui.notifMsg = { type: 'err', text: t('Gagal menyalakan notifikasi: {pesan}', { pesan: (e && e.message) || String(e) }) };
+    }
+    render();
+  }
+
+  async function ujiNotif() {
+    try {
+      const r = await panggilFungsiNotif({ aksi: 'uji' });
+      ui.notifMsg = r.terkirim ? { type: 'ok', text: t('Notifikasi uji terkirim. Tunggu sebentar.') } : { type: 'err', text: t('Notifikasi uji belum terkirim. Coba matikan lalu nyalakan lagi.') };
+    } catch (e) {
+      ui.notifMsg = { type: 'err', text: t('Gagal mengirim: {pesan}', { pesan: (e && e.message) || String(e) }) };
+    }
+    render();
+  }
+
+  // Hapus langganan notifikasi HP ini (dipanggil juga saat keluar dari akun).
+  async function hapusLanggananNotif() {
+    const n = notifTersimpan();
+    if (!n) return;
+    try { localStorage.removeItem(KEY_NOTIF); } catch (e) { /* abaikan */ }
+    try {
+      await cloud.client.from('push_langganan').delete().eq('endpoint', n.endpoint);
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+    } catch (e) { /* abaikan */ }
+  }
+
+  async function matikanNotif() {
+    await hapusLanggananNotif();
+    ui.notifMsg = { type: 'ok', text: t('Notifikasi dimatikan di HP ini.') };
+    render();
   }
 
   function viewCloud() {
@@ -2221,6 +2620,7 @@
       const nama = ui.pelanggan.nama.trim();
       if (!nama) { toast(t('Isi nama pembeli dulu')); $('#pelangganNama') && $('#pelangganNama').focus(); return; }
       jual.pelanggan = { nama, wa: ui.pelanggan.wa.trim() };
+      if (!modeStaff()) jual.jatuhTempo = jatuhTempoKasir();
     }
     if (modeStaff()) {
       // Staff tidak tahu modal; laba dihitung di HP owner saat penjualan ini diambil.
@@ -2238,8 +2638,11 @@
     ui.bayar = '';
     ui.metode = 'tunai';
     ui.pelanggan = { nama: '', wa: '' };
+    ui.jatuhTempo = undefined;
     render();
     toast(t(jual.metode === 'nanti' ? 'Tagihan {total} tersimpan' : 'Penjualan {total} tersimpan', { total: rp(total) }));
+    // Tagihan baru dari HP owner: langsung tawarkan kirim tagihan ke pembeli.
+    if (jual.metode === 'nanti' && !modeStaff()) bukaTagih(ui.trxTerakhir, true);
   }
 
   function batalTransaksi(id) {
@@ -2364,7 +2767,34 @@
         if (k) k.scrollIntoView({ behavior: 'smooth' });
         break;
       }
-      case 'kosongkan': ui.cart = {}; ui.bayar = ''; render(); break;
+      case 'kosongkan': ui.cart = {}; ui.bayar = ''; ui.jatuhTempo = undefined; render(); break;
+      case 'ubah-tempo': bukaUbahTempo(); break;
+      case 'ubah-tempo-trx': bukaUbahTempo(id); break;
+      case 'tempo-hari':
+        $$('#formTempo [data-act=tempo-hari]').forEach((b) => b.setAttribute('aria-pressed', b === el));
+        $('#formTempo').tanggal.value = el.dataset.tgl;
+        break;
+      case 'tagih-bagikan': bagikanTagihan(); break;
+      case 'lihat-tagihan': lihatTagihan(); break;
+      case 'tunda-pengingat': tundaPengingat(); break;
+      case 'rekening-baru': bukaFormRekening(); break;
+      case 'rekening-ubah': bukaFormRekening(id); break;
+      case 'rekening-hapus':
+        if (confirm(t('Hapus rekening ini?'))) {
+          ubahProfil({ rekening: (profil().rekening || []).filter((r) => r.id !== id) });
+          dialog.close();
+          render();
+        }
+        break;
+      case 'setel-tagihan': {
+        const v = el.dataset.nilai;
+        ubahProfil({ tagihan: Object.assign({}, T.pengaturan(profil()), { [el.dataset.nama]: v === 'true' ? true : v === 'false' ? false : Number(v) }) });
+        render();
+        break;
+      }
+      case 'notif-nyalakan': nyalakanNotif(); break;
+      case 'notif-matikan': matikanNotif(); break;
+      case 'notif-uji': ujiNotif(); break;
       case 'simpan-penjualan': simpanPenjualan(); break;
       case 'batal-trx': batalTransaksi(id); break;
       case 'periode': ui.periode = el.dataset.p; render(); break;
@@ -2382,7 +2812,6 @@
       case 'tagih': bukaTagih(id); break;
       case 'kirim-laporan': bukaKirimLaporan(); break;
       case 'laporan-bagikan': bagikanLaporan(); break;
-      case 'tagih-qris': bagikanQris(); break;
       case 'catat-bayar': bukaCatatBayar(id); break;
       case 'metode-lunas': $$('#formLunas [data-act=metode-lunas]').forEach((b) => b.setAttribute('aria-pressed', b === el)); $('#formLunas').metode.value = el.dataset.m; break;
       case 'hapus-qris': {
@@ -2556,6 +2985,35 @@
       dialog.close();
       render();
       toast(t('Produk tersimpan'));
+    }
+    if (f.id === 'formTempo') {
+      e.preventDefault();
+      const tgl = T.tanggalSah(f.tanggal.value) ? f.tanggal.value : null;
+      const id = f.trxId.value;
+      const trx = id && store.get(id);
+      if (trx) {
+        const d = Object.assign({}, trx.data, { jatuhTempo: tgl });
+        if (!tgl) d.jatuhTempo = undefined;
+        change(() => store.put('transaksi', JSON.parse(JSON.stringify(d)), id));
+      } else if (!id) {
+        ui.jatuhTempo = tgl;
+      }
+      dialog.close();
+      render();
+      return;
+    }
+    if (f.id === 'formRekening') {
+      e.preventDefault();
+      const r = { id: f.rekId.value || KelolaStore.uuid(), bank: f.bank.value.trim(), nomor: T.nomorPolos(f.nomor.value), nama: f.nama.value.trim() };
+      if (!r.bank || !r.nomor) { toast(t('Isi nama bank dan nomor rekening')); return; }
+      const list = (profil().rekening || []).slice();
+      const i = list.findIndex((x) => x.id === r.id);
+      if (i >= 0) list[i] = r; else list.push(r);
+      ubahProfil({ rekening: list });
+      dialog.close();
+      render();
+      toast(t('Rekening tersimpan'));
+      return;
     }
     if (f.id === 'formKategori') {
       e.preventDefault();
@@ -2734,6 +3192,7 @@
       ? t('Masih ada {n} perubahan yang belum terkirim ke cloud dan akan hilang jika Anda keluar sekarang. Tetap keluar?', { n: pending })
       : t('Keluar dari akun? Data di perangkat ini akan dihapus, tapi tetap aman di cloud.');
     if (!confirm(tanya)) return;
+    await hapusLanggananNotif();
     await cloud.client.auth.signOut().catch(() => {});
     if (cloud.user) lupakanAkun(cloud.user.id);
     const wasStaff = modeStaff();
@@ -2931,7 +3390,7 @@
       }
       const nama = (id) => { const x = (ui.staff.list || []).find((st) => st.staff_id === id); return x && x.nama; };
       let n = 0;
-      change(() => { n = P.olahPenjualanStaff(store, H, rows, nama); });
+      change(() => { n = P.olahPenjualanStaff(store, H, rows, nama, (w) => T.jatuhTempoBaru(w, T.pengaturan(profil()).jatuhTempo)); });
       if (n) renderAman();
     } catch (err) {
       if (S.belumDisiapkan(err)) ui.staff.belumSiap = true;
@@ -3032,6 +3491,17 @@
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Notifikasi pengingat disentuh saat aplikasi sudah terbuka.
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.buka === 'tagihan' && !perluGerbang()) lihatTagihan();
+    });
+  }
+
+  // Aplikasi dibuka dari notifikasi pengingat: langsung ke daftar Belum lunas.
+  if (new URLSearchParams(location.search).get('buka') === 'tagihan') {
+    ui.view = 'laporan';
+    ui.bukaTagihan = true;
+    history.replaceState(null, '', location.pathname);
   }
 
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', terapkanTema);
