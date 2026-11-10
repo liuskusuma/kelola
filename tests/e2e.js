@@ -551,9 +551,10 @@ async function tab(ctx, errors) {
   // 20b. Tagihan belum lunas: kirim lewat WhatsApp, dicicil, lalu lunas.
   assert.ok(norm(await p.textContent('#tagihan')).includes('Bu Ani'));
   await p.click('#tagihan >> text=Tagih via WA');
-  const wa = await p.getAttribute('#dialogTagih a.btn', 'href');
+  await p.waitForSelector('#gambarTagihan');
+  const wa = await p.getAttribute('#tagihWa', 'href');
   assert.ok(wa.startsWith('https://wa.me/6281234567890?text='), wa);
-  assert.ok(norm(decodeURIComponent(wa)).includes('Sisa tagihan: Rp 22.000*'), decodeURIComponent(wa));
+  assert.ok(norm(decodeURIComponent(wa)).includes('Nominal:\n22000'), decodeURIComponent(wa));
   await p.click('dialog >> text=Tutup');
   await p.click('#tagihan >> text=Catat bayar');
   await p.fill('#formLunas input[name=jumlah]', '10000');
@@ -569,6 +570,65 @@ async function tab(ctx, errors) {
   assert.deepEqual(lunas.dibayar.map((b) => [b.jumlah, b.metode]), [[10000, 'tunai'], [12000, 'qris']]);
   await p.click('nav >> text=Produk');
   assert.ok(norm(await p.textContent('li:has-text("Keripik pedas")')).includes('stok 12'));
+
+  // 20c. Penagihan: rekening di Akun, jatuh tempo di kasir, layar Tagih langsung terbuka,
+  // pengingat jatuh tempo dan tanda merah di menu Laporan.
+  await p.click('nav >> text=Akun');
+  await bukaLipat(p);
+  await p.click('#caraBayar >> text=+ Tambah rekening / e-wallet');
+  await p.fill('#formRekening input[name=bank]', 'BCA');
+  await p.fill('#formRekening input[name=nomor]', '1234 567-890');
+  await p.fill('#formRekening input[name=nama]', 'Lius');
+  await p.click('#formRekening button.primary');
+  assert.deepEqual(await p.evaluate(() => Kelola.store.get('profil').data.rekening.map(({ bank, nomor, nama }) => [bank, nomor, nama])), [['BCA', '1234567890', 'Lius']]);
+  assert.ok(norm(await p.textContent('#daftarRekening')).includes('1234567890'));
+  await p.click('#caraBayar >> text=H-3');
+  assert.deepEqual(await p.evaluate(() => Kelola.store.get('profil').data.tagihan), { jatuhTempo: 7, ingatkan: true, mulai: 3 });
+  assert.equal(await p.locator('#pengingat').count(), 0);
+
+  await p.click('nav >> text=Kasir');
+  await p.click('.tile:has-text("Keripik pedas")');
+  await p.click('#metodeBayar >> text=Bayar nanti');
+  assert.ok(norm(await p.textContent('#jatuhTempoKasir')).includes('(7 hari)'));
+  assert.equal(await p.textContent('#keranjang + .card [data-act=kosongkan]'), 'Batal');
+  await p.click('#jatuhTempoKasir >> text=Ubah');
+  await p.click('#formTempo >> text=3 hari');
+  await p.click('#formTempo button.primary');
+  assert.ok(norm(await p.textContent('#jatuhTempoKasir')).includes('(3 hari)'));
+  await p.fill('#pelangganNama', 'Pak Budi');
+  await p.fill('#pelangganWa', '0813 1111 2222');
+  await p.click('text=Simpan & tagih');
+  await p.waitForSelector('#dialogTagih #gambarTagihan');
+  assert.ok(norm(await p.textContent('#dialogTagih h3')).includes('Kirim tagihan ke Pak Budi?'));
+  const waBaru = decodeURIComponent(await p.getAttribute('#tagihWa', 'href'));
+  assert.ok(waBaru.startsWith('https://wa.me/6281311112222?text='), waBaru);
+  assert.ok(norm(waBaru).includes('Nomor rekening BCA a.n. Lius:\n1234567890\n\nNominal:\n11000'), waBaru);
+  assert.equal(await p.evaluate(() => document.querySelector('#gambarTagihan').naturalWidth), 720);
+  await p.click('#dialogTagih >> text=Nanti saja');
+  const tglLokal = (n) => p.evaluate((n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }, n);
+  const tagihBudi = () => p.evaluate(() => Kelola.store.list('transaksi').find((r) => r.data.pelanggan && r.data.pelanggan.nama === 'Pak Budi'));
+  assert.equal((await tagihBudi()).data.jatuhTempo, await tglLokal(3));
+  // Jatuh tempo 3 hari lagi, diingatkan mulai H-3.
+  await p.waitForSelector('#pengingat');
+  assert.ok(norm(await p.textContent('#pengingat')).includes('1 tagihan segera jatuh tempo'));
+  assert.equal(await p.locator('nav.tabs .tanda-merah').count(), 0);
+  // Jatuh tempo diubah ke kemarin: jadi lewat tempo.
+  await p.click('#pengingat >> text=Lihat tagihan');
+  assert.equal(await p.textContent('#judul'), 'Laporan');
+  await p.click('#tagihan li:has-text("Pak Budi") [data-act=ubah-tempo-trx]');
+  await p.fill('#formTempo input[name=tanggal]', await tglLokal(-1));
+  await p.click('#formTempo button.primary');
+  assert.ok(norm(await p.textContent('#tagihan li:has-text("Pak Budi")')).includes('Lewat 1 hari'));
+  assert.ok(norm(await p.textContent('#pengingat')).includes('1 tagihan lewat jatuh tempo'));
+  assert.equal(await p.textContent('nav.tabs .tanda-merah'), '1');
+  await p.click('#pengingat >> text=Nanti');
+  assert.equal(await p.locator('#pengingat').count(), 0, '"Nanti" menyembunyikan kartu sampai besok');
+  assert.equal(await p.textContent('nav.tabs .tanda-merah'), '1');
+  // Batalkan lagi supaya langkah berikutnya tidak berubah (stok kembali).
+  const idBudi = (await tagihBudi()).id;
+  await p.click(`[data-act=batal-trx][data-id="${idBudi}"]`);
+  await p.waitForFunction(() => !Kelola.store.list('transaksi').some((r) => r.data.pelanggan && r.data.pelanggan.nama === 'Pak Budi'));
+  assert.equal(await p.locator('nav.tabs .tanda-merah').count(), 0);
 
   // 21. Owner menghapus staff: akun itu tidak bisa memakai kasir lagi.
   await p.click('nav >> text=Akun');

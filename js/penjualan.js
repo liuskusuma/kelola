@@ -15,7 +15,7 @@
     });
   }
 
-  // jual = { id?, waktu, items: [{ produkId, nama, qty, harga }], bayar, staff?, metode?, pelanggan? }
+  // jual = { id?, waktu, items: [{ produkId, nama, qty, harga }], bayar, staff?, metode?, pelanggan?, jatuhTempo? }
   // metode: 'tunai' (bawaan), 'qris', atau 'nanti' (belum dibayar, jadi tagihan).
   // Modal diambil dari data produk saat ini, jadi staff tidak perlu tahu modal.
   function catatPenjualan(store, H, jual) {
@@ -36,6 +36,8 @@
       data.pelanggan = { nama: String(pl.nama || '').trim() || 'Pelanggan', wa: String(pl.wa || '').trim() };
       data.dibayar = [];
       data.lunas = false;
+      // Jatuh tempo 'YYYY-MM-DD' (lihat js/tagihan.js); boleh kosong.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(jual.jatuhTempo || '')) data.jatuhTempo = jual.jatuhTempo;
     }
     const rec = store.put('transaksi', data, jual.id);
     ubahStok(store, potong, -1);
@@ -88,7 +90,8 @@
 
   // Penjualan dari akun staff yang diambil dari cloud. Yang sudah pernah dicatat
   // (termasuk yang sudah dibatalkan) dilewati, jadi aman kalau terambil dua kali.
-  function olahPenjualanStaff(store, H, rows, namaStaff) {
+  // jatuhTempo(waktu): jatuh tempo bawaan owner untuk tagihan dari staff (boleh tidak diisi).
+  function olahPenjualanStaff(store, H, rows, namaStaff, jatuhTempo) {
     let n = 0;
     rows.forEach((row) => {
       if (store.has(row.id)) return;
@@ -100,6 +103,7 @@
         bayar: d.bayar,
         metode: d.metode,
         pelanggan: d.pelanggan,
+        jatuhTempo: d.metode === 'nanti' && jatuhTempo ? jatuhTempo(d.waktu || row.created_at) : null,
         staff: namaStaff(row.staff_id) || 'Staff',
       });
       n += 1;

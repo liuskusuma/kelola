@@ -52,6 +52,14 @@ Tanpa langkah ini aplikasi tetap jalan, tapi data hanya tersimpan di perangkat.
 
 Buka **SQL Editor → New query**, tempel isi [`supabase/staff.sql`](supabase/staff.sql), lalu klik **Run**. Skrip ini aman dijalankan ulang, dan perlu dijalankan ulang setiap kali file itu berubah (misalnya supaya QRIS, logo, dan warna usaha tampil di HP staff). Sebelum dijalankan, bagian Staff di tab Akun menampilkan pesan "Fitur staff belum disiapkan".
 
+### Menyiapkan notifikasi pengingat tagihan (sekali saja)
+
+Pengingat di dalam aplikasi langsung jalan tanpa persiapan. Supaya HP juga menerima notifikasi setiap pagi jam 08.00 WIB walau aplikasi tertutup:
+
+1. **SQL Editor → New query**, tempel isi [`supabase/notifikasi.sql`](supabase/notifikasi.sql), lalu **Run**. Aman dijalankan ulang.
+2. **Edge Functions → Deploy a new function → Via Editor**. Beri nama `pengingat-tagihan`, hapus contoh kode, tempel seluruh isi [`supabase/functions/pengingat-tagihan/index.ts`](supabase/functions/pengingat-tagihan/index.ts), lalu **Deploy**. Tidak perlu mengisi rahasia apa pun.
+3. Di HP owner: buka Kelola (di iPhone harus dari ikon di Layar Utama), **Akun → Cara bayar & tagihan → Nyalakan notifikasi**, lalu **Kirim uji**.
+
 Opsional: kalau ingin pengguna langsung bisa masuk tanpa konfirmasi email, matikan **Authentication → Providers → Email → Confirm email**.
 
 ## Hosting
@@ -68,6 +76,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `js/app.js` | Layar Kasir, Produk, Laporan, Akun, serta login |
 | `js/hitung.js` | Rumus HPP dari resep, saran harga, dan potongan stok |
 | `js/penjualan.js` | Mencatat dan membatalkan penjualan, serta mengolah penjualan dari akun staff |
+| `js/tagihan.js` | Jatuh tempo, urutan tagihan, dan pengingat tagihan "bayar nanti" |
 | `js/grafik.js` | Mengelompokkan penjualan per jam/hari/bulan untuk grafik Laporan |
 | `js/excel.js` | Membuat file Excel laporan (.xlsx) di HP, tanpa server |
 | `js/warna.js` | Mengambil warna dari logo dan membuat warna tampilan terang/gelap |
@@ -78,6 +87,8 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `js/config.js` | Alamat dan kunci Supabase |
 | `supabase/schema.sql` | Tabel, trigger, dan aturan keamanan di Supabase |
 | `supabase/staff.sql` | Tabel dan fungsi untuk akun staff |
+| `supabase/notifikasi.sql` | Tabel dan jadwal harian untuk notifikasi pengingat tagihan |
+| `supabase/functions/pengingat-tagihan/` | Edge Function yang mengirim notifikasi pengingat (Web Push) |
 | `vendor/` | Pustaka supabase-js 2.45.4 dan huruf Exo 2 (disimpan lokal supaya jalan offline) |
 | `icons/logo.png` | Logo Kelola (K putih dan kuning di atas navy, sudut transparan); `logo-asli.jpg` adalah file aslinya, `icon-*.png` ikon layar utama |
 | `sw.js`, `manifest.webmanifest`, `icons/icon-*.png` | Supaya bisa dipasang di layar utama dan jalan offline |
