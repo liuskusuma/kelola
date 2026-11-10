@@ -340,6 +340,7 @@ async function tab(ctx, errors) {
   await p.click('#trxTerakhir button');
   await p.waitForSelector('#strukGambar');
   assert.ok(await p.evaluate(() => document.querySelector('#strukGambar').naturalWidth === 600 || new Promise((ok) => document.querySelector('#strukGambar').onload = () => ok(true))));
+  const strukTanpaLogo = await p.evaluate(() => ({ id: Kelola.ui.trxTerakhir, tinggi: document.querySelector('#strukGambar').naturalHeight }));
   await p.click('dialog >> text=Tutup');
   await p.click('nav >> text=Produk');
   assert.ok(norm(await p.textContent('main')).includes('stok 14'), 'keripik 16 - 2');
@@ -471,6 +472,15 @@ async function tab(ctx, errors) {
   assert.equal((await p.evaluate(() => Kelola.store.get('profil').data.warna.utama)), warnaLogo);
   await p.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan', null, { timeout: 10000 });
   assert.ok([...rows.values()].some((r) => r.id === 'profil' && r.data.qris));
+  // Struk penjualan memakai logo usaha: gambarnya lebih tinggi karena ada logo di atas.
+  await p.click('nav >> text=Laporan');
+  await p.evaluate((id) => document.querySelector(`[data-act=struk][data-id="${id}"]`).click(), strukTanpaLogo.id);
+  await p.waitForSelector('#strukGambar');
+  await p.waitForFunction(() => document.querySelector('#strukGambar').complete);
+  assert.equal(await p.evaluate(() => document.querySelector('#strukGambar').naturalHeight), strukTanpaLogo.tinggi + 110);
+  await p.click('dialog >> text=Tutup');
+  await p.click('nav >> text=Akun');
+  await bukaLipat(p);
 
   // 17. Owner membuat kode undangan staff.
   await p.click('#staff >> text=Buat kode undangan');

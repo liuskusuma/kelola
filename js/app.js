@@ -2342,14 +2342,15 @@
   }
 
   // Gambar struk di canvas, lebar 600 px supaya tajam di WhatsApp.
-  function strukGambar(s) {
+  function strukGambar(s, logo) {
     const W = 600;
     const pad = 40;
     const c = document.createElement('canvas');
     const ctx = c.getContext('2d');
     const font = (ukuran, tebal) => `${tebal ? '700 ' : ''}${ukuran}px -apple-system, "Segoe UI", Roboto, sans-serif`;
     const judulFont = `italic 800 40px "Exo 2", "Segoe UI", sans-serif`;
-    const tinggi = 260 + (s.kontak ? 34 : 0) + s.items.length * 70 + 190;
+    const L = logo ? 110 : 0; // tinggi tempat logo di atas nama usaha
+    const tinggi = 260 + L + (s.kontak ? 34 : 0) + s.items.length * 70 + 190;
     c.width = W;
     c.height = tinggi;
     ctx.fillStyle = '#ffffff';
@@ -2358,7 +2359,11 @@
     const navy = tm ? tm.terang['--navy'] : '#0a2a6e';
     ctx.fillStyle = tm ? navy : '#fecb10';
     ctx.fillRect(0, 0, W, 12);
-    let y = 80;
+    if (logo) {
+      const sk = Math.min(96 / logo.width, 96 / logo.height);
+      ctx.drawImage(logo, W / 2 - (logo.width * sk) / 2, 40 + 48 - (logo.height * sk) / 2, logo.width * sk, logo.height * sk);
+    }
+    let y = 80 + L;
     ctx.textAlign = 'center';
     ctx.fillStyle = navy;
     ctx.font = judulFont;
@@ -2418,7 +2423,7 @@
     if (!trx) return;
     if (document.fonts && document.fonts.load) await document.fonts.load('italic 800 40px "Exo 2"').catch(() => {});
     const s = strukBaris(trx);
-    const canvas = strukGambar(s);
+    const canvas = strukGambar(s, await muatGambar(usaha().logo));
     const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/png'));
     if (ui.struk && ui.struk.url) URL.revokeObjectURL(ui.struk.url);
     const nama = `struk-${trx.data.waktu.slice(0, 16).replace(/[-:T]/g, '')}.png`;
