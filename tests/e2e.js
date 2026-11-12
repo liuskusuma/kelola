@@ -460,6 +460,8 @@ async function tab(ctx, errors) {
   // 16b. Owner menyimpan gambar QRIS di Akun.
   await p.setInputFiles('[data-qris]', { name: 'qris.png', mimeType: 'image/png', buffer: gambar });
   await p.waitForSelector('#qrisSetel img.qris-gambar');
+  // Gambar ini bukan QR sungguhan: nominal otomatis tidak ditawarkan, QRIS biasa tetap dipakai.
+  await p.waitForSelector('#qrisNominal[data-terbaca="0"]');
   assert.ok((await p.evaluate(() => Kelola.store.get('profil').data.qris)).startsWith('data:image/jpeg'));
 
   // 16c. Owner memasang logo sendiri dan memakai warnanya untuk aplikasi.
@@ -898,6 +900,72 @@ async function tab(ctx, errors) {
   await v.waitForSelector('img.struk');
   const teksStruk = await v.evaluate(() => Kelola.ui.struk.teks);
   assert.ok(teksStruk.includes('Es kopi susu (Besar, Extra shot)') && teksStruk.includes('(Es sedikit)'), teksStruk);
+
+  // 26. QRIS dengan nominal: kode QRIS toko dibaca dari gambar, QR di kasir dan tagihan membawa nominal.
+  const qrisToko = await v.evaluate(() => {
+    const tlv = (tag, nilai) => tag + String(nilai.length).padStart(2, '0') + nilai;
+    const badan = tlv('00', '01') + tlv('01', '11') + tlv('26', tlv('00', 'ID.CO.CONTOH.WWW') + tlv('01', '936000000000000001') + tlv('03', 'UMI'))
+      + tlv('52', '5812') + tlv('53', '360') + tlv('58', 'ID') + tlv('59', 'KOPI SENJA') + tlv('60', 'JAKARTA') + '6304';
+    const kode = badan + KelolaQris.crc16(badan);
+    const qr = qrcode(0, 'M'); qr.addData(kode); qr.make();
+    const n = qr.getModuleCount();
+    // Seperti gambar QRIS dari bank: QR di tengah bingkai dengan tulisan, disimpan sebagai JPEG.
+    const c = document.createElement('canvas'); c.width = 700; c.height = 900;
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 700, 900);
+    ctx.fillStyle = '#c8102e'; ctx.fillRect(0, 0, 700, 110); ctx.fillStyle = '#000'; ctx.font = '700 40px sans-serif'; ctx.fillText('KOPI SENJA', 60, 190);
+    const px = Math.floor(560 / n);
+    for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (qr.isDark(r, k)) ctx.fillRect(70 + k * px, 250 + r * px, px, px);
+    Kelola.store.put('profil', Object.assign({}, Kelola.store.get('profil') ? Kelola.store.get('profil').data : {}, { qris: c.toDataURL('image/jpeg', 0.9) }), 'profil');
+    return kode;
+  });
+  await v.click('dialog >> text=Tutup');
+  await v.click('nav >> text=Akun');
+  await bukaLipat(v);
+  await v.waitForSelector('#qrisNominal[data-terbaca="1"]');
+  assert.ok(norm(await v.textContent('#qrisNominal')).includes('QRIS KOPI SENJA terbaca'));
+  const bacaGambarQr = (sel) => v.evaluate(async (sel) => {
+    const img = document.querySelector(sel);
+    await img.decode();
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    const h = jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    return h ? h.data : '';
+  }, sel);
+  await v.click('nav >> text=Kasir');
+  await v.click('.tile:has-text("Air mineral")');
+  await v.click('.tile:has-text("Air mineral")');
+  await v.click('#metodeBayar >> text=QRIS');
+  await v.click('[data-act=qris]');
+  await v.waitForSelector('#qrisGambar[data-terisi="10000"]');
+  assert.ok(norm(await v.textContent('#qrisTerisi')).includes('Nominal Rp 10.000 sudah terisi'));
+  const kodeKasir = await bacaGambarQr('#qrisGambar');
+  assert.ok(await v.evaluate((k) => KelolaQris.sah(k), kodeKasir), 'QR bernominal sah: ' + kodeKasir);
+  assert.deepEqual(await v.evaluate((k) => ['01', '54', '59'].map((t) => KelolaQris.ambil(k, t)), kodeKasir), ['12', '10000', 'KOPI SENJA']);
+  assert.equal(await v.evaluate(([k, asal]) => KelolaQris.ambil(k, '26') === KelolaQris.ambil(asal, '26'), [kodeKasir, qrisToko]), true, 'tujuan bayar tidak berubah');
+  // Aplikasi pembeli menolak: kembali ke gambar QRIS biasa.
+  await v.click('[data-act=qris-polos]');
+  await v.waitForSelector('#qrisGambar[data-terisi=""]');
+  assert.ok((await v.getAttribute('#qrisGambar', 'src')).startsWith('data:image/jpeg'));
+  await v.click('#qrisKasir >> text=Tutup');
+  // Tagihan: QR di gambar tagihan membawa sisa tagihan.
+  await v.click('#metodeBayar >> text=Bayar nanti');
+  await v.fill('#pelangganNama', 'Bu Rina');
+  await v.click('text=Simpan & tagih');
+  await v.waitForSelector('#dialogTagih #gambarTagihan');
+  const kodeTagihan = await bacaGambarQr('#gambarTagihan');
+  assert.equal(await v.evaluate((k) => (KelolaQris.sah(k) ? KelolaQris.ambil(k, '54') : 'tidak sah'), kodeTagihan), '10000');
+  await v.click('#dialogTagih >> text=Nanti saja');
+  // Dimatikan di Akun: kasir memakai gambar QRIS biasa.
+  await v.click('nav >> text=Akun');
+  await bukaLipat(v);
+  await v.click('[data-act=setel-qris-nominal][data-v=""]');
+  assert.equal(await v.evaluate(() => Kelola.store.get('profil').data.qrisNominal), false);
+  await v.click('nav >> text=Kasir');
+  await v.click('.tile:has-text("Air mineral")');
+  await v.click('#metodeBayar >> text=QRIS');
+  await v.click('[data-act=qris]');
+  await v.waitForSelector('#qrisGambar[data-terisi=""]');
+  assert.equal(await v.locator('#qrisTerisi').count(), 0);
 
   assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors, hpVarian.errors), []);
   await browser.close();

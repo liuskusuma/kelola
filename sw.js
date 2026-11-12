@@ -1,6 +1,6 @@
 // Supaya Kelola tetap terbuka tanpa internet.
 // Naikkan VERSION setiap kali ada file yang berubah.
-const VERSION = 'kelola-v30';
+const VERSION = 'kelola-v31';
 const FILES = [
   './',
   'index.html',
@@ -10,6 +10,8 @@ const FILES = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'vendor/supabase-2.45.4.js',
+  'vendor/jsqr-1.4.0.js',
+  'vendor/qrcode-generator-1.4.4.js',
   'vendor/fonts/exo-2-latin-700-normal.woff2',
   'vendor/fonts/exo-2-latin-700-italic.woff2',
   'vendor/fonts/exo-2-latin-800-normal.woff2',
@@ -20,6 +22,7 @@ const FILES = [
   'js/hitung.js',
   'js/kategori.js',
   'js/varian.js',
+  'js/qris.js',
   'js/warna.js',
   'js/grafik.js',
   'js/excel.js',

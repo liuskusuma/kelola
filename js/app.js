@@ -10,6 +10,7 @@
   const F = KelolaFaceId;
   const K = KelolaKategori;
   const V = KelolaVarian;
+  const Q = KelolaQris;
   const T = KelolaTagihan;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
@@ -1260,12 +1261,85 @@
     });
   }
 
+  // ---------- QRIS dengan nominal ----------
+  // Kode QR dibaca dari gambar QRIS toko di perangkat ini (pustaka jsQR), nominalnya disisipkan
+  // oleh js/qris.js, lalu QR baru digambar dengan pustaka qrcode-generator. Kalau gambarnya
+  // tidak terbaca, semua tempat kembali memakai gambar QRIS biasa.
+  const qrisBaca = { src: null, kode: undefined, janji: null };
+
+  function bacaQr(img, sisi) {
+    const skala = Math.min(1, sisi / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * skala));
+    c.height = Math.max(1, Math.round(img.naturalHeight * skala));
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    const hasil = window.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    return hasil && hasil.data ? hasil.data.trim() : '';
+  }
+
+  // Kode QRIS toko dari gambar yang disimpan, atau '' kalau tidak terbaca. Hasilnya diingat per gambar.
+  function kodeQris() {
+    const src = usaha().qris;
+    if (!src) return Promise.resolve('');
+    if (qrisBaca.src === src && qrisBaca.janji) return qrisBaca.janji;
+    qrisBaca.src = src;
+    qrisBaca.kode = undefined;
+    // Pustaka pembaca QR tidak termuat: anggap tidak terbaca, pakai gambar QRIS biasa.
+    if (typeof window.jsQR !== 'function') { qrisBaca.kode = ''; qrisBaca.janji = Promise.resolve(''); return qrisBaca.janji; }
+    qrisBaca.janji = muatGambar(src).then((img) => {
+      let kode = '';
+      try {
+        // Coba ukuran asli dulu, lalu diperkecil (kadang lebih mudah terbaca).
+        if (img) [900, 600, 400].some((sisi) => { const k = bacaQr(img, sisi); if (Q.sah(k)) kode = k; return !!kode; });
+      } catch (e) { /* gambar tidak bisa dibaca */ }
+      if (qrisBaca.src === src) qrisBaca.kode = kode;
+      return kode;
+    });
+    return qrisBaca.janji;
+  }
+
+  // Nominal otomatis menyala kecuali owner mematikannya di Akun.
+  const nominalQrisAktif = () => usaha().qrisNominal !== false;
+
+  async function kodeQrisNominal(jumlah) {
+    if (!nominalQrisAktif() || typeof window.qrcode !== 'function') return '';
+    return Q.denganNominal(await kodeQris(), jumlah);
+  }
+
+  // Gambar QR hitam-putih dengan tepi putih, kira-kira `sisi` px.
+  function kanvasQr(kode, sisi) {
+    const qr = window.qrcode(0, 'M');
+    qr.addData(kode);
+    qr.make();
+    const n = qr.getModuleCount();
+    const tepi = 4;
+    const px = Math.max(2, Math.floor(sisi / (n + tepi * 2)));
+    const c = document.createElement('canvas');
+    c.width = c.height = (n + tepi * 2) * px;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#000000';
+    for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (qr.isDark(r, k)) ctx.fillRect((k + tepi) * px, (r + tepi) * px, px, px);
+    return c;
+  }
+
   // Gambar tagihan untuk dikirim ke pembeli: logo dan warna usaha, rincian belanja,
   // sisa bayar, rekening, dan QRIS (kalau sudah disimpan). Lebar 720 px.
   async function gambarTagihan(d) {
     const p = profil();
     if (document.fonts && document.fonts.load) await document.fonts.load('italic 800 40px "Exo 2"').catch(() => {});
-    const [logo, qris] = await Promise.all([muatGambar(p.logo || 'icons/logo.png'), muatGambar(p.qris)]);
+    const [logo, qrisToko] = await Promise.all([muatGambar(p.logo || 'icons/logo.png'), muatGambar(p.qris)]);
+    // QRIS dengan nominal sisa tagihan kalau kode QRIS toko terbaca; kalau tidak, gambar QRIS biasa.
+    let qris = qrisToko;
+    let qrisTerisi = false;
+    try {
+      const kode = await kodeQrisNominal(P.sisaTagihan(d));
+      if (kode) { qris = kanvasQr(kode, 420); qrisTerisi = true; }
+    } catch (e) { qris = qrisToko; }
     const tm = temaUsaha();
     const utama = tm ? tm.terang['--navy'] : '#0a2a6e';
     const aksen = tm ? tm.terang['--yellow'] : '#fecb10';
@@ -1361,7 +1435,7 @@
         kotak(ctx, pad, y, W - pad * 2, tinggi + 84, 20); ctx.stroke();
         ctx.drawImage(qris, (W - lebar) / 2, y + 20, lebar, tinggi);
         ctx.textAlign = 'center'; ctx.fillStyle = '#5d6a88'; ctx.font = huruf(21);
-        ctx.fillText(t('Masukkan nominal {jumlah}', { jumlah: rp(sisa) }), W / 2, y + tinggi + 60, W - pad * 2 - 32);
+        ctx.fillText(t(qrisTerisi ? 'Nominal {jumlah} sudah terisi' : 'Masukkan nominal {jumlah}', { jumlah: rp(sisa) }), W / 2, y + tinggi + 60, W - pad * 2 - 32);
         y += tinggi + 84;
       }
       y += 40;
@@ -1720,6 +1794,25 @@
     change(() => store.put('profil', Object.assign({}, profil(), patch), 'profil'));
   }
 
+  // Keterangan "nominal otomatis" di bawah gambar QRIS. Membaca kode QR butuh waktu sebentar,
+  // jadi halaman digambar ulang sekali setelah selesai.
+  function statusQrisNominal(p) {
+    if (qrisBaca.src !== p.qris || qrisBaca.kode === undefined) {
+      kodeQris().then(() => { if (ui.view === 'akun' && !dialog.open) render(); });
+      return `<div class="small muted" id="qrisNominal">${t('Memeriksa gambar QRIS…')}</div>`;
+    }
+    if (!qrisBaca.kode) {
+      return `<div class="small warn" id="qrisNominal" data-terbaca="0">${t('Kode QR di gambar ini tidak terbaca, jadi pembeli tetap mengetik nominal sendiri. Coba pakai gambar QRIS yang lebih jelas, misalnya file asli dari bank.')}</div>`;
+    }
+    const aktif = p.qrisNominal !== false;
+    return `<div id="qrisNominal" data-terbaca="1" class="stack">
+      <div class="row"><div><div class="label">${t('Nominal otomatis')}</div>
+        <div class="small muted">${t('QRIS {nama} terbaca. Pembeli tinggal memindai, nominal sudah terisi.', { nama: esc(Q.namaMerchant(qrisBaca.kode) || '') })}</div></div>
+        <div class="seg kecil saklar" role="group"><button data-act="setel-qris-nominal" data-v="1" aria-pressed="${aktif}">${t('Aktif')}</button>
+          <button data-act="setel-qris-nominal" data-v="" aria-pressed="${!aktif}">${t('Mati')}</button></div></div>
+      <div class="small muted">${t('Coba dulu dengan nominal kecil di aplikasi yang sering dipakai pembeli. Kalau ada yang menolak, matikan di sini.')}</div></div>`;
+  }
+
   // Owner: cara pembeli membayar (QRIS, rekening) dan pengaturan tagihan "bayar nanti".
   function viewCaraBayar() {
     const p = profil();
@@ -1736,6 +1829,7 @@
           <label class="btn kecil"><input type="file" accept="image/*" data-qris hidden>${q ? t('Ganti gambar QRIS') : t('Pilih gambar QRIS')}</label>
           ${q ? `<button type="button" class="link small danger" data-act="hapus-qris">${t('Hapus QRIS')}</button>` : ''}
         </div>
+        ${q ? statusQrisNominal(p) : ''}
       </div>
       <hr class="pemisah">
       <div><div class="label">${t('Rekening & e-wallet')}</div><div class="small muted">${t('Tampil di gambar tagihan dan pesan WhatsApp.')}</div></div>
@@ -2304,15 +2398,27 @@
     render();
   }
 
-  function bukaQris() {
+  // QRIS di kasir. Kalau kode QRIS toko terbaca, QR-nya sudah berisi total keranjang;
+  // `polos` = tampilkan gambar QRIS biasa (untuk aplikasi pembeli yang menolak QR bernominal).
+  async function bukaQris(polos) {
     const q = usaha().qris;
     if (!q) return;
     const total = isiKeranjang().reduce((s, x) => s + x.harga * x.qty, 0);
+    let gambar = q;
+    let terisi = false;
+    if (!polos && total > 0) {
+      try {
+        const kode = await kodeQrisNominal(total);
+        if (kode) { gambar = kanvasQr(kode, 720).toDataURL('image/png'); terisi = true; }
+      } catch (e) { gambar = q; }
+    }
     dialog.innerHTML = `<div class="stack" id="qrisKasir">
       <div class="row"><h3>${t('Bayar dengan QRIS')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
       ${total ? `<div class="row"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>` : ''}
-      <img class="qris-gambar besar" src="${esc(q)}" alt="QRIS">
-      <div class="small muted">${t('Minta pembeli memindai kode ini, lalu cek notifikasi pembayaran masuk sebelum menyimpan penjualan.')}</div></div>`;
+      <img class="qris-gambar besar" id="qrisGambar" data-terisi="${terisi ? total : ''}" src="${esc(gambar)}" alt="QRIS">
+      ${terisi ? `<div class="msg ok" id="qrisTerisi">${t('Nominal {jumlah} sudah terisi. Pembeli tinggal memindai dan membayar.', { jumlah: rp(total) })}</div>` : ''}
+      <div class="small muted">${t('Minta pembeli memindai kode ini, lalu cek notifikasi pembayaran masuk sebelum menyimpan penjualan.')}</div>
+      ${terisi ? `<button type="button" class="link small" data-act="qris-polos">${t('Aplikasi pembeli menolak? Pakai QRIS tanpa nominal')}</button>` : ''}</div>`;
     if (!dialog.open) dialog.showModal();
   }
 
@@ -3041,6 +3147,12 @@
       case 'batal-trx': batalTransaksi(id); break;
       case 'periode': ui.periode = el.dataset.p; render(); break;
       case 'qris': bukaQris(); break;
+      case 'qris-polos': bukaQris(true); break;
+      case 'setel-qris-nominal':
+        if (modeStaff() || modeKunci()) break;
+        ubahProfil({ qrisNominal: !!el.dataset.v });
+        render();
+        break;
       case 'warna': if (!modeStaff() && !modeKunci()) pilihWarnaUsaha(el.dataset.w); break;
       case 'hapus-logo': {
         if (modeStaff() || modeKunci()) break;
