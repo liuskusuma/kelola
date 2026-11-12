@@ -608,6 +608,16 @@
     'Tambahan': 'Add-ons',
     'pilih satu': 'choose one',
     'boleh lebih dari satu': 'more than one allowed',
+    // QRIS dengan nominal
+    'Nominal {jumlah} sudah terisi': 'Amount {jumlah} already filled in',
+    'Memeriksa gambar QRIS…': 'Checking the QRIS image…',
+    'Kode QR di gambar ini tidak terbaca, jadi pembeli tetap mengetik nominal sendiri. Coba pakai gambar QRIS yang lebih jelas, misalnya file asli dari bank.': 'The QR code in this image could not be read, so customers still type the amount themselves. Try a clearer QRIS image, such as the original file from your bank.',
+    'Nominal otomatis': 'Automatic amount',
+    'QRIS {nama} terbaca. Pembeli tinggal memindai, nominal sudah terisi.': 'QRIS {nama} was read. Customers just scan; the amount is already filled in.',
+    'Mati': 'Off',
+    'Coba dulu dengan nominal kecil di aplikasi yang sering dipakai pembeli. Kalau ada yang menolak, matikan di sini.': 'Try it first with a small amount in the apps your customers use most. If one rejects it, turn this off here.',
+    'Nominal {jumlah} sudah terisi. Pembeli tinggal memindai dan membayar.': 'Amount {jumlah} is already filled in. The customer just scans and pays.',
+    'Aplikasi pembeli menolak? Pakai QRIS tanpa nominal': "Customer's app rejects it? Use QRIS without an amount",
   };
 
   const KAMUS = { en: EN };
