@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const B = require('../js/bahasa.js');
 const H = require('../js/hitung.js');
+const V = require('../js/varian.js');
 
 function memoryStorage() {
   const m = new Map();
@@ -34,6 +35,7 @@ test('setiap teks di app.js punya terjemahan Inggris', () => {
     'Stok produk jadi (kosongkan kalau dibuat saat dipesan)', 'Stok (kosongkan jika tidak dihitung)',
     'Sewa tempat', 'Listrik & air', 'Gaji', 'Transportasi', 'Iklan & promosi', 'Peralatan', 'Lainnya',
     ...H.pilihanHarga(1000, 30).map((p) => p.label),
+    ...V.CONTOH.flatMap((c) => [c.nama].concat(c.pilihan)), 'pilih satu', 'boleh lebih dari satu',
   ];
   const hilang = [...new Set(kunci.concat(dinamis))].filter((k) => !(k in B.EN));
   assert.deepEqual(hilang, []);
