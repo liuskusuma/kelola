@@ -7,7 +7,7 @@
 --   memasukkan kode itu untuk bergabung.
 -- - Staff TIDAK bisa membaca tabel `records` milik owner. Staff hanya bisa
 --   memanggil fungsi `produk_kasir`, yang mengembalikan nama, harga, stok,
---   satuan, dan foto produk (tanpa modal, resep, laporan, atau pengeluaran).
+--   satuan, foto, dan varian produk (tanpa modal, resep, laporan, atau pengeluaran).
 -- - Penjualan staff masuk ke tabel `penjualan_staff`. Aplikasi owner
 --   mengambilnya, menghitung modal dan laba, lalu memotong stok.
 
@@ -137,6 +137,7 @@ begin
         'foto', r.data->>'foto',
         'mode', r.data->>'mode',
         'paket', r.data->'paket',
+        'varian', r.data->'varian',
         'stok', case when jsonb_typeof(r.data->'stok') = 'number'
                      then to_jsonb((r.data->>'stok')::numeric - coalesce(t.qty, 0))
                      else 'null'::jsonb end

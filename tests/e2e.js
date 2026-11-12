@@ -118,7 +118,7 @@ async function mock(route) {
     return json(200, {
       usaha: { namaUsaha: prof ? prof.data.namaUsaha : null, kontak: prof ? prof.data.kontak : null, qris: prof ? prof.data.qris || null : null, logo: prof ? prof.data.logo || null : null, warna: prof ? prof.data.warna || null : null, kategori: prof ? prof.data.kategori || null : null },
       produk: milik.filter((r) => r.kind === 'produk').map((r) => ({
-        id: r.id, nama: r.data.nama, harga: r.data.harga, satuan: r.data.satuan, kategori: r.data.kategori || null, foto: r.data.foto, mode: r.data.mode, paket: r.data.paket,
+        id: r.id, nama: r.data.nama, harga: r.data.harga, satuan: r.data.satuan, kategori: r.data.kategori || null, foto: r.data.foto, mode: r.data.mode, paket: r.data.paket, varian: r.data.varian || null,
         stok: typeof r.data.stok === 'number' ? r.data.stok - (tertunda[r.id] || 0) : null,
       })),
     });
@@ -822,7 +822,84 @@ async function tab(ctx, errors) {
   await n.click('#formDaftar button');
   assert.equal(norm(await n.textContent('#gerbang .msg.err')), 'The passwords do not match.');
 
-  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors), []);
+  // 25. Varian dan tambahan: diatur di form produk, dipilih di kasir, tercatat di penjualan dan struk.
+  const hpVarian = await device(browser);
+  const v = hpVarian.page;
+  await v.click('text=Tambah produk pertama');
+  await v.fill('input[name=nama]', 'Es kopi susu');
+  await v.fill('input[name=modal]', '7000');
+  await v.fill('input[name=harga]', '18000');
+  await v.fill('input[name=stok]', '5');
+  await v.click('[data-act=varian-saklar][data-v="1"]');
+  await v.click('[data-act=varian-contoh][data-k=ukuran]');
+  assert.deepEqual(await v.locator('.varian-grup >> nth=0 >> input[name=vpn]').evaluateAll((els) => els.map((e) => e.value)), ['Reguler', 'Besar']);
+  await v.fill('.varian-grup >> nth=0 >> input[name=vph] >> nth=1', '5000');
+  await v.click('[data-act=varian-grup-baru]');
+  await v.fill('.varian-grup >> nth=1 >> input[name=vn]', 'Tambahan');
+  await v.click('.varian-grup >> nth=1 >> [data-act=varian-jenis][data-b="1"]');
+  await v.fill('.varian-grup >> nth=1 >> input[name=vpn] >> nth=0', 'Extra shot');
+  await v.fill('.varian-grup >> nth=1 >> input[name=vph] >> nth=0', '4000');
+  await v.fill('.varian-grup >> nth=1 >> input[name=vpn] >> nth=1', 'Boba');
+  await v.fill('.varian-grup >> nth=1 >> input[name=vph] >> nth=1', '3000');
+  assert.ok(norm(await v.textContent('#hargaVarian')).includes('Besar Rp 23.000'), await v.textContent('#hargaVarian'));
+  await v.click('#formProduk button.primary');
+  await v.click('nav >> text=Produk');
+  assert.ok(norm(await v.textContent('main .list')).includes('2 varian'));
+  // Produk kedua tanpa varian menyalin varian dari produk pertama, lalu dimatikan lagi.
+  await v.click('text=+ Tambah produk');
+  await v.fill('input[name=nama]', 'Air mineral');
+  await v.fill('input[name=modal]', '2000');
+  await v.fill('input[name=harga]', '5000');
+  await v.click('[data-act=varian-saklar][data-v="1"]');
+  await v.selectOption('select[name=salinVarian]', { index: 1 });
+  assert.equal(await v.locator('.varian-grup').count(), 2);
+  await v.click('[data-act=varian-saklar][data-v=""]');
+  await v.click('#formProduk button.primary');
+  const produkVarian = await v.evaluate(() => Kelola.store.list('produk').map((r) => ({ nama: r.data.nama, varian: r.data.varian })));
+  assert.equal(produkVarian.find((x) => x.nama === 'Air mineral').varian, undefined);
+  assert.deepEqual(produkVarian.find((x) => x.nama === 'Es kopi susu').varian.map((g) => [g.nama, g.banyak, g.pilihan.map((o) => o.harga)]),
+    [['Ukuran', false, [0, 5000]], ['Tambahan', true, [4000, 3000]]]);
+  // Kasir: produk tanpa varian langsung masuk keranjang, produk bervarian membuka pilihan.
+  await v.click('nav >> text=Kasir');
+  await v.click('.tile:has-text("Air mineral")');
+  assert.equal(await v.locator('#formVarian').count(), 0);
+  await v.click('.tile:has-text("Es kopi susu")');
+  await v.waitForSelector('#formVarian');
+  assert.equal(norm(await v.textContent('#varianTambah')), 'Tambah · Rp 18.000');
+  await v.click('#formVarian .opsi:has-text("Besar")');
+  await v.click('#formVarian .opsi:has-text("Extra shot")');
+  await v.fill('#formVarian input[name=catatan]', 'Es sedikit');
+  await v.click('[data-act=varian-qty][data-n="1"]');
+  assert.equal(norm(await v.textContent('#varianTambah')), 'Tambah · Rp 54.000');
+  await v.click('#varianTambah');
+  // Pesanan biasa: dua ketukan (produk, lalu Tambah) memakai pilihan paling atas.
+  await v.click('.tile:has-text("Es kopi susu")');
+  await v.click('#varianTambah');
+  const keranjang = norm(await v.textContent('#keranjang + .card'));
+  assert.ok(keranjang.includes('Besar, Extra shot') && keranjang.includes('Es sedikit') && keranjang.includes('Reguler'), keranjang);
+  assert.ok(keranjang.includes('Rp 77.000'), keranjang);
+  assert.equal(norm(await v.textContent('.tile:has-text("Es kopi susu") .jumlah')), '3');
+  // Stok 5: sudah 3 di keranjang, minta 3 lagi ditolak.
+  await v.click('.tile:has-text("Es kopi susu")');
+  await v.click('[data-act=varian-qty][data-n="1"]');
+  await v.click('[data-act=varian-qty][data-n="1"]');
+  await v.click('#varianTambah');
+  await v.waitForSelector('#toast.show');
+  assert.equal(norm(await v.textContent('#toast')), 'Stok tidak cukup');
+  await v.click('#formVarian >> text=Tutup');
+  await v.click('text=Simpan penjualan');
+  const trxVarian = await v.evaluate(() => Kelola.store.list('transaksi')[0].data);
+  assert.equal(trxVarian.total, 77000);
+  assert.equal(trxVarian.laba, 77000 - 3 * 7000 - 2000);
+  const besar = trxVarian.items.find((i) => i.varian === 'Besar, Extra shot');
+  assert.deepEqual([besar.qty, besar.harga, besar.catatan], [2, 27000, 'Es sedikit']);
+  assert.equal(await v.evaluate(() => Kelola.store.list('produk').find((r) => r.data.nama === 'Es kopi susu').data.stok), 2);
+  await v.click('#trxTerakhir button');
+  await v.waitForSelector('img.struk');
+  const teksStruk = await v.evaluate(() => Kelola.ui.struk.teks);
+  assert.ok(teksStruk.includes('Es kopi susu (Besar, Extra shot)') && teksStruk.includes('(Es sedikit)'), teksStruk);
+
+  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors, hpVarian.errors), []);
   await browser.close();
   console.log('E2E OK');
 })().catch((e) => { console.error(e); console.error(log.slice(-15).join('\n')); process.exit(1); });

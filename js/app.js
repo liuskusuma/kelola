@@ -9,6 +9,7 @@
   const S = KelolaStaff;
   const F = KelolaFaceId;
   const K = KelolaKategori;
+  const V = KelolaVarian;
   const T = KelolaTagihan;
   const config = window.KELOLA_CONFIG || {};
   const cloudReady = !!(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
@@ -34,7 +35,7 @@
 
   const ui = {
     view: 'kasir',
-    cart: {}, // produkId -> qty
+    cart: {}, // kunci baris -> qty; kunci = id produk, atau produk + pilihan varian + catatan (js/varian.js)
     bayar: '',
     metode: 'tunai', // tunai | qris | nanti
     pelanggan: { nama: '', wa: '' }, // untuk "bayar nanti"
@@ -738,24 +739,30 @@
   }
 
   function isiKeranjang() {
-    return Object.entries(ui.cart)
-      .map(([id, qty]) => ({ rec: ambilKasir(id), qty }))
-      .filter((x) => x.rec);
+    return Object.entries(ui.cart).map(([kunci, qty]) => {
+      const u = V.urai(kunci);
+      const rec = ambilKasir(u.produkId);
+      if (!rec) return null;
+      // Harga satu baris = harga produk + tambahan dari varian yang dipilih.
+      const pil = V.pilih(rec.data.varian, u.ids);
+      return { kunci, rec, qty, harga: (rec.data.harga || 0) + pil.tambah, varian: pil.label, catatan: u.catatan };
+    }).filter(Boolean);
   }
 
   // Bar navy di atas tab bar, seperti bar total di Bagi Rata.
   function renderSummary() {
     const items = ui.view === 'kasir' ? isiKeranjang() : [];
     const qty = items.reduce((s, x) => s + x.qty, 0);
-    const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
+    const total = items.reduce((s, x) => s + x.harga * x.qty, 0);
     document.body.classList.toggle('ada-ringkasan', qty > 0);
     $('#summary').innerHTML = `<span>${t('Keranjang · {n} item', { n: angka.format(qty) })}</span><b>${rp(total)} ›</b>`;
   }
 
   // Bisa ditambah satu lagi ke keranjang tanpa melebihi stok?
-  function bisaTambah(id) {
-    const cart = Object.assign({}, ui.cart);
-    cart[id] = (cart[id] || 0) + 1;
+  function bisaTambah(kunci, n) {
+    const cart = V.perProduk(ui.cart);
+    const id = V.urai(kunci).produkId;
+    cart[id] = (cart[id] || 0) + (n || 1);
     return H.stokCukup(cart, cariKasir);
   }
 
@@ -772,7 +779,7 @@
         <button class="btn primary" data-act="produk-baru">${t('Tambah produk pertama')}</button></div>`;
     }
     const items = isiKeranjang();
-    const total = items.reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
+    const total = items.reduce((s, x) => s + x.harga * x.qty, 0);
     const bayar = num(ui.bayar);
     const grup = K.kelompok(produk, urutanKategori());
     const adaKategori = grup.some((g) => g.nama);
@@ -782,14 +789,16 @@
     const chips = adaKategori
       ? `<div class="kat-chips" role="group" aria-label="${t('Kategori')}">${chip(null, t('Semua'), produk.length)}${grup.map((g) => chip(g.nama, g.nama || t('Lainnya'), g.items.length)).join('')}</div>`
       : '';
+    const diKeranjang = V.perProduk(ui.cart);
     const tiles = tampil.map((p) => {
       const d = p.data;
       const habis = !bisaTambah(p.id);
       const stok = d.stok != null && d.mode !== 'paket' ? `<div class="small muted">${t('Stok')} ${angka.format(d.stok)} ${esc(d.satuan || '')}</div>` : '';
-      const jumlah = ui.cart[p.id] ? `<span class="jumlah">${ui.cart[p.id]}</span>` : '';
+      const jumlah = diKeranjang[p.id] ? `<span class="jumlah">${diKeranjang[p.id]}</span>` : '';
+      const pilihan = V.ada(d) ? `<div class="small muted">${t('Ada pilihan')}</div>` : '';
       const foto = d.foto ? `<img class="foto" src="${esc(d.foto)}" alt="">` : '';
-      return `<button class="tile ${d.foto ? 'ada-foto' : ''}" data-act="tambah-keranjang" data-id="${p.id}" ${habis ? 'disabled' : ''}>
-        ${jumlah}${foto}<div class="isi"><div class="nama">${esc(d.nama)}</div><div class="harga">${rp(d.harga)}</div>${stok}</div></button>`;
+      return `<button class="tile ${d.foto ? 'ada-foto' : ''}" data-act="${V.ada(d) ? 'pilih-varian' : 'tambah-keranjang'}" data-id="${p.id}" ${habis ? 'disabled' : ''}>
+        ${jumlah}${foto}<div class="isi"><div class="nama">${esc(d.nama)}</div><div class="harga">${rp(d.harga)}</div>${pilihan}${stok}</div></button>`;
     }).join('');
     const terakhir = !items.length && ui.trxTerakhir && ambilTransaksi(ui.trxTerakhir);
     const info = terakhir
@@ -800,9 +809,11 @@
     const cart = items.length
       ? `<div class="group-title" id="keranjang">${t('Keranjang')}</div><div class="card">
         <ul class="list">${items.map((x) => `<li class="row">
-          <div class="dengan-foto">${fotoKecil(x.rec.data)}<div><div class="nama">${esc(x.rec.data.nama)}</div><div class="small muted">${rp(x.rec.data.harga)} × ${x.qty} = ${rp(x.rec.data.harga * x.qty)}</div></div></div>
-          <div class="qty"><button data-act="kurang" data-id="${x.rec.id}" aria-label="${t('Kurangi')}">−</button><span>${x.qty}</span>
-          <button data-act="tambah-keranjang" data-id="${x.rec.id}" aria-label="${t('Tambah')}" ${bisaTambah(x.rec.id) ? '' : 'disabled'}>+</button></div></li>`).join('')}</ul>
+          <div class="dengan-foto">${fotoKecil(x.rec.data)}<div><div class="nama">${esc(x.rec.data.nama)}</div>
+            ${x.varian ? `<div class="small pilihan-baris">${esc(x.varian)}</div>` : ''}${x.catatan ? `<div class="small muted catatan-baris">“${esc(x.catatan)}”</div>` : ''}
+            <div class="small muted">${rp(x.harga)} × ${x.qty} = ${rp(x.harga * x.qty)}</div></div></div>
+          <div class="qty"><button data-act="kurang" data-id="${esc(x.kunci)}" aria-label="${t('Kurangi')}">−</button><span>${x.qty}</span>
+          <button data-act="tambah-keranjang" data-id="${esc(x.kunci)}" aria-label="${t('Tambah')}" ${bisaTambah(x.kunci) ? '' : 'disabled'}>+</button></div></li>`).join('')}</ul>
         <div class="row" style="margin-top:8px"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>
         <div class="seg kecil" id="metodeBayar" role="group" aria-label="${t('Cara bayar')}" style="margin:14px 0 0">${[['tunai', t('Tunai')], ['qris', t('QRIS')], ['nanti', t('Bayar nanti')]]
           .map(([k, l]) => `<button data-act="metode" data-m="${k}" aria-pressed="${ui.metode === k}">${l}</button>`).join('')}</div>
@@ -910,7 +921,8 @@
           const rugi = d.harga < modal ? `<div class="small err">${t('Harga jual di bawah modal!')}</div>` : '';
           const produksi = d.mode === 'resep' && d.stok != null
             ? `<button class="btn kecil" data-act="produksi" data-id="${p.id}">${t('Produksi')}</button>` : '';
-          return `<li class="row"><div class="dengan-foto">${fotoKecil(d)}<div><div class="nama">${esc(d.nama)} ${jenis}</div>
+          const varian = V.ada(d) ? `<span class="tag varian" title="${esc(V.ringkas(d.varian))}">${t('{n} varian', { n: d.varian.length })}</span>` : '';
+          return `<li class="row"><div class="dengan-foto">${fotoKecil(d)}<div><div class="nama">${esc(d.nama)} ${jenis}${varian}</div>
             <div class="small muted">${t('Modal {modal} · jual {harga} · laba {laba} ({m}%)', { modal: rp(modal), harga: rp(d.harga), laba: rp(d.harga - modal), m: angka.format(m) })}${stok}</div>${naik}${rugi}</div></div>
             <div class="aksi">${produksi}<button class="btn kecil" data-act="produk-ubah" data-id="${p.id}">${t('Ubah')}</button></div></li>`;
     };
@@ -1039,7 +1051,7 @@
       <div class="group-title">${t('Riwayat penjualan')}</div>
       <div class="card">${trx.length
         ? `<ul class="list">${trx.map((r) => `<li class="row${P.sisaTagihan(r.data) > 0 ? ' belum' : ''}"><div><div><span class="nama">${rp(r.data.total)}</span> <span class="small muted">· ${t('laba')} ${rp(r.data.laba)}</span></div>
-            <div class="small muted">${fmtWaktu(r.data.waktu)}${r.data.staff ? ' · ' + t('oleh {nama}', { nama: esc(r.data.staff) }) : ''} · ${esc(r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', '))}</div>${tagBayar(r.data)}</div>
+            <div class="small muted">${fmtWaktu(r.data.waktu)}${r.data.staff ? ' · ' + t('oleh {nama}', { nama: esc(r.data.staff) }) : ''} · ${esc(r.data.items.map((i) => `${V.namaItem(i)} ×${i.qty}`).join(', '))}</div>${tagBayar(r.data)}</div>
             <div class="aksi"><button class="btn kecil" data-act="struk" data-id="${r.id}">${t('Struk')}</button>
             <button class="btn kecil danger" data-act="batal-trx" data-id="${r.id}">${t('Batalkan')}</button></div></li>`).join('')}</ul>`
         : `<div class="empty">${t('Belum ada penjualan.')}</div>`}</div>`;
@@ -1305,7 +1317,7 @@
       };
       y += 30; garis(); y += 46;
       d.items.forEach((i) => {
-        kiriKanan(`${i.nama} ×${angka.format(i.qty)}`, rp(i.qty * i.harga), '#13203f', '#13203f', huruf(25));
+        kiriKanan(`${V.namaItem(i)} ×${angka.format(i.qty)}`, rp(i.qty * i.harga), '#13203f', '#13203f', huruf(25));
         y += 40;
       });
       y -= 12; garis(); y += 46;
@@ -2051,6 +2063,7 @@
       </div>
       <label class="field"><span>${t('Harga jual (Rp)')}</span><input name="harga" type="number" inputmode="decimal" min="0" step="any" required value="${esc(d.harga)}"></label>
       <div class="small muted" id="ringkasLaba"></div>
+      ${isianVarian(d, id)}
       <label class="field" data-bagian-stok ${mode === 'paket' ? 'hidden' : ''}><span>${labelStok(mode)}</span><input name="stok" type="number" inputmode="decimal" step="any" value="${d.stok == null ? '' : esc(d.stok)}"></label>
       <div class="row">
         ${rec ? `<button type="button" class="btn danger" data-act="produk-hapus" data-id="${rec.id}">${t('Hapus')}</button>` : '<span></span>'}
@@ -2062,6 +2075,122 @@
     renderFotoForm();
     hitungForm();
     if (!dialog.open) dialog.showModal();
+  }
+
+  // ---------- Varian dan tambahan ----------
+
+  // Satu pilihan di dalam kelompok varian (form produk).
+  function barisPilihan(p) {
+    return `<div class="baris pilihan" data-baris="pilihan" data-pid="${esc((p && p.id) || '')}">
+      <input name="vpn" maxlength="${V.MAKS}" value="${esc((p && p.nama) || '')}" placeholder="${t('Nama pilihan')}" aria-label="${t('Nama pilihan')}">
+      <input name="vph" type="number" inputmode="decimal" min="0" step="any" value="${p && p.harga ? esc(p.harga) : ''}" placeholder="+0" aria-label="${t('Tambah harga (Rp)')}">
+      <button type="button" class="hapus" data-act="hapus-baris" aria-label="${t('Hapus baris')}">×</button></div>`;
+  }
+
+  // Satu kelompok varian, mis. "Ukuran" dengan pilihan Reguler dan Besar.
+  function kelompokVarian(g) {
+    const banyak = !!(g && g.banyak);
+    const pilihan = g && g.pilihan && g.pilihan.length ? g.pilihan : [null, null];
+    return `<div class="hint stack varian-grup" data-gid="${esc((g && g.id) || '')}">
+      <div class="row"><input name="vn" maxlength="${V.MAKS}" value="${esc((g && g.nama) || '')}" placeholder="${t('Nama kelompok, mis. Ukuran')}" aria-label="${t('Nama kelompok')}">
+        <button type="button" class="link small danger" data-act="varian-grup-hapus">${t('Hapus')}</button></div>
+      <div class="seg kecil" role="group"><button type="button" data-act="varian-jenis" data-b="" aria-pressed="${!banyak}">${t('Pilih satu')}</button>
+        <button type="button" data-act="varian-jenis" data-b="1" aria-pressed="${banyak}">${t('Boleh banyak')}</button></div>
+      <div class="row small muted kepala-pilihan"><span>${t('Nama pilihan')}</span><span>${t('Tambah harga (Rp)')}</span></div>
+      <div class="daftar-pilihan">${pilihan.map(barisPilihan).join('')}</div>
+      <button type="button" class="link small" data-act="varian-pilihan-baru">${t('+ Tambah pilihan')}</button>
+      <div class="small muted" data-ket-satu ${banyak ? 'hidden' : ''}>${t('Pilihan paling atas otomatis terpilih di kasir.')}</div>
+    </div>`;
+  }
+
+  // Bagian "Punya varian / tambahan?" di form produk.
+  function isianVarian(d, id) {
+    const adaV = V.ada(d);
+    const lain = produkList().filter((p) => p.id !== id && V.ada(p.data));
+    const contoh = V.CONTOH.map((c) => `<button type="button" data-act="varian-contoh" data-k="${c.kode}">${esc(t(c.nama))}</button>`).join('');
+    const salin = lain.length
+      ? `<select name="salinVarian" aria-label="${t('Salin varian dari produk lain…')}"><option value="">${t('Salin varian dari produk lain…')}</option>${lain.map((p) => `<option value="${p.id}">${esc(p.data.nama)} (${esc(V.ringkas(p.data.varian))})</option>`).join('')}</select>`
+      : '';
+    return `<div class="field" id="bagianVarian">
+      <div class="row"><span class="lbl" style="margin-bottom:0">${t('Punya varian / tambahan?')}</span>
+        <div class="seg kecil saklar" role="group"><button type="button" data-act="varian-saklar" data-v="1" aria-pressed="${adaV}">${t('Ya')}</button>
+          <button type="button" data-act="varian-saklar" data-v="" aria-pressed="${!adaV}">${t('Tidak')}</button></div></div>
+      <div class="small muted" style="margin:6px 4px 0">${t('Misalnya ukuran, topping, atau level pedas. Kasir memilihnya saat produk diketuk.')}</div>
+      <div id="isiVarian" class="stack" style="margin-top:12px" ${adaV ? '' : 'hidden'}>
+        <div id="kelompokVarian" class="stack">${adaV ? d.varian.map(kelompokVarian).join('') : ''}</div>
+        <div class="small muted">${t('Tambah dari contoh, atau buat sendiri:')}</div>
+        <div class="kat-pilih">${contoh}<button type="button" class="baru" data-act="varian-grup-baru">${t('+ Buat sendiri')}</button></div>
+        ${salin}
+        <div class="small muted" id="hargaVarian"></div>
+      </div></div>`;
+  }
+
+  // Varian dari isian form produk. Kalau saklarnya "Tidak", hasilnya kosong.
+  function bacaVarianForm(f) {
+    const isi = $('#isiVarian', f);
+    if (!isi || isi.hidden) return [];
+    return V.rapikan($$('.varian-grup', f).map((g) => ({
+      id: g.dataset.gid,
+      nama: $('[name=vn]', g).value,
+      banyak: $('[data-act=varian-jenis][data-b="1"]', g).getAttribute('aria-pressed') === 'true',
+      pilihan: $$('[data-baris=pilihan]', g).map((b) => ({ id: b.dataset.pid, nama: $('[name=vpn]', b).value, harga: num($('[name=vph]', b).value) })),
+    })));
+  }
+
+  function tambahKelompokVarian(g) {
+    $('#kelompokVarian').insertAdjacentHTML('beforeend', kelompokVarian(g));
+    const baru = $('#kelompokVarian').lastElementChild;
+    baru.scrollIntoView({ block: 'nearest' });
+    if (!g) $('[name=vn]', baru).focus();
+    hitungForm();
+  }
+
+  // Layar pilihan di kasir untuk produk yang punya varian.
+  function bukaPilihVarian(id) {
+    const rec = ambilKasir(id);
+    if (!rec || !V.ada(rec.data)) return;
+    const d = rec.data;
+    const bawaan = new Set(V.pilih(d.varian, []).ids);
+    const kelompok = d.varian.map((g, gi) => `<fieldset class="varian-pilih"><legend><span>${esc(g.nama)}</span><span class="small muted">${t(g.banyak ? 'boleh lebih dari satu' : 'pilih satu')}</span></legend>
+      ${g.pilihan.map((o) => `<label class="opsi"><input type="${g.banyak ? 'checkbox' : 'radio'}" name="g${gi}" value="${esc(o.id)}" ${bawaan.has(o.id) ? 'checked' : ''}>
+        <span class="nm">${esc(o.nama)}</span><span class="hg">${o.harga ? '+ ' + rp(o.harga) : g.banyak ? t('Gratis') : rp(d.harga)}</span></label>`).join('')}</fieldset>`).join('');
+    dialog.innerHTML = `<form id="formVarian" class="stack" method="dialog">
+      <div class="row"><h3>${esc(d.nama)}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      ${kelompok}
+      <label class="field"><span>${t('Catatan (boleh kosong)')}</span><input name="catatan" maxlength="${V.MAKS_CATATAN}" autocomplete="off" placeholder="${t('Contoh: es sedikit')}"></label>
+      <input type="hidden" name="produkId" value="${esc(id)}"><input type="hidden" name="qty" value="1">
+      <div class="row"><div class="qty"><button type="button" data-act="varian-qty" data-n="-1" aria-label="${t('Kurangi')}">−</button><span id="varianQty">1</span>
+        <button type="button" data-act="varian-qty" data-n="1" aria-label="${t('Tambah')}">+</button></div>
+        <button class="btn primary" id="varianTambah" style="flex:1"></button></div>
+    </form>`;
+    hitungVarian();
+    if (!dialog.open) dialog.showModal();
+  }
+
+  const idsVarianForm = (f) => $$('fieldset input:checked', f).map((el) => el.value);
+
+  function hitungVarian() {
+    const f = $('#formVarian');
+    if (!f) return;
+    const rec = ambilKasir(f.produkId.value);
+    if (!rec) return;
+    const qty = Math.max(1, num(f.qty.value));
+    const pil = V.pilih(rec.data.varian, idsVarianForm(f));
+    $('#varianQty').textContent = qty;
+    $('#varianTambah').textContent = t('Tambah · {total}', { total: rp((rec.data.harga + pil.tambah) * qty) });
+  }
+
+  function simpanPilihVarian(f) {
+    const rec = ambilKasir(f.produkId.value);
+    if (!rec) { dialog.close(); return; }
+    const qty = Math.max(1, num(f.qty.value));
+    const pil = V.pilih(rec.data.varian, idsVarianForm(f));
+    const kunci = V.kunci(rec.id, pil.ids, f.catatan.value);
+    if (!bisaTambah(kunci, qty)) { toast(t('Stok tidak cukup')); return; }
+    ui.cart[kunci] = (ui.cart[kunci] || 0) + qty;
+    ui.trxTerakhir = null;
+    dialog.close();
+    render();
   }
 
   // Kotak foto di form produk: pratinjau, ambil dari kamera, pilih dari galeri, hapus.
@@ -2178,7 +2307,7 @@
   function bukaQris() {
     const q = usaha().qris;
     if (!q) return;
-    const total = isiKeranjang().reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
+    const total = isiKeranjang().reduce((s, x) => s + x.harga * x.qty, 0);
     dialog.innerHTML = `<div class="stack" id="qrisKasir">
       <div class="row"><h3>${t('Bayar dengan QRIS')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
       ${total ? `<div class="row"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>` : ''}
@@ -2208,6 +2337,8 @@
         .map((el) => ({ produkId: $('[name=pp]', el).value, qty: num($('[name=pq]', el).value) }))
         .filter((i) => i.produkId && i.qty > 0);
     }
+    const varian = bacaVarianForm(f);
+    if (varian.length) d.varian = varian;
     d.modal = mode === 'manual' ? num(f.modal.value) : H.modalProduk(d, cari);
     const stok = f.stok.value.trim();
     d.stok = mode === 'paket' || stok === '' ? null : num(stok);
@@ -2227,6 +2358,12 @@
       : `<div class="small muted">${t('Isi modal dulu untuk melihat saran harga.')}</div>`;
     // Jangan ganti tombol yang sama: kalau diganti di antara sentuhan, ketukannya hilang.
     if (ui.pilihanHtml !== html) { $('#pilihan').innerHTML = html; ui.pilihanHtml = html; }
+    const hv = $('#hargaVarian');
+    if (hv) {
+      // Contoh harga di kasir untuk kelompok "pilih satu" pertama.
+      const g = (d.varian || []).find((x) => !x.banyak);
+      hv.textContent = g && d.harga > 0 ? t('Harga di kasir: {daftar}', { daftar: g.pilihan.map((o) => `${o.nama} ${rp(d.harga + o.harga)}`).join(' · ') }) : '';
+    }
     $('#ringkasLaba').textContent = d.harga > 0
       ? t('Laba per satuan {laba} · margin {m}%', { laba: rp(d.harga - d.modal), m: angka.format(H.margin(d.modal, d.harga)) }) + (d.harga < d.modal ? ' · ' + t('harga di bawah modal!') : '')
       : '';
@@ -2379,7 +2516,7 @@
       judul: p.namaUsaha || t('Struk penjualan'),
       kontak: p.kontak || '',
       waktu: w,
-      items: trx.data.items.map((i) => ({ nama: i.nama, rinci: `${angka.format(i.qty)} × ${rp(i.harga)}`, jumlah: rp(i.qty * i.harga) })),
+      items: trx.data.items.map((i) => ({ nama: V.namaItem(i), catatan: i.catatan || '', rinci: `${angka.format(i.qty)} × ${rp(i.harga)}`, jumlah: rp(i.qty * i.harga) })),
       total: rp(trx.data.total),
       rincian: rincianBayar(trx.data, bayar),
     };
@@ -2398,7 +2535,7 @@
   function strukTeks(s) {
     return [
       `*${s.judul}*`, s.kontak, s.waktu, '',
-      ...s.items.map((i) => `${i.nama}\n  ${i.rinci} = ${i.jumlah}`), '',
+      ...s.items.map((i) => `${i.nama}${i.catatan ? `\n  (${i.catatan})` : ''}\n  ${i.rinci} = ${i.jumlah}`), '',
       `*${t('Total')}: ${s.total}*`, ...s.rincian.map(([l, v]) => `${l}: ${v}`), '', t('Terima kasih!'),
     ].filter((x, i) => x !== '' || i > 2).join('\n');
   }
@@ -2412,7 +2549,7 @@
     const font = (ukuran, tebal) => `${tebal ? '700 ' : ''}${ukuran}px -apple-system, "Segoe UI", Roboto, sans-serif`;
     const judulFont = `italic 800 40px "Exo 2", "Segoe UI", sans-serif`;
     const L = logo ? 110 : 0; // tinggi tempat logo di atas nama usaha
-    const tinggi = 260 + L + (s.kontak ? 34 : 0) + s.items.length * 70 + 190;
+    const tinggi = 260 + L + (s.kontak ? 34 : 0) + s.items.length * 70 + s.items.filter((i) => i.catatan).length * 28 + 190;
     c.width = W;
     c.height = tinggi;
     ctx.fillStyle = '#ffffff';
@@ -2449,6 +2586,7 @@
       y += 32;
       ctx.font = font(22);
       ctx.fillStyle = '#5d6a88';
+      if (i.catatan) { ctx.fillText(`“${i.catatan}”`, pad, y, W - pad * 2); y += 28; }
       ctx.fillText(i.rinci, pad, y);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#13203f';
@@ -2604,7 +2742,7 @@
         const sisa = P.sisaTagihan(r.data);
         return {
           waktu: Date.parse(r.data.waktu),
-          barang: r.data.items.map((i) => `${i.nama} ×${i.qty}`).join(', ') + (r.data.pelanggan ? ` (${r.data.pelanggan.nama})` : ''),
+          barang: r.data.items.map((i) => `${V.namaItem(i)} ×${i.qty}`).join(', ') + (r.data.pelanggan ? ` (${r.data.pelanggan.nama})` : ''),
           metode: metode[r.data.metode] || metode.tunai,
           lunas: !(sisa > 0),
           omzet: r.data.total,
@@ -2675,7 +2813,12 @@
     if (!items.length) return;
     const jual = {
       waktu: new Date().toISOString(),
-      items: items.map((x) => ({ produkId: x.rec.id, nama: x.rec.data.nama, qty: x.qty, harga: x.rec.data.harga })),
+      items: items.map((x) => {
+        const i = { produkId: x.rec.id, nama: x.rec.data.nama, qty: x.qty, harga: x.harga };
+        if (x.varian) i.varian = x.varian;
+        if (x.catatan) i.catatan = x.catatan;
+        return i;
+      }),
     };
     const total = jual.items.reduce((s, i) => s + i.harga * i.qty, 0);
     jual.metode = ui.metode;
@@ -2771,6 +2914,41 @@
       case 'tambah-isi-paket': $('#barisPaket').insertAdjacentHTML('beforeend', barisPaket(null, $('#formProduk').produkId.value)); hitungForm(); break;
       case 'hapus-baris': el.closest('.baris').remove(); hitungForm(); break;
       case 'hapus-foto': ui.foto = null; renderFotoForm(); break;
+      case 'pilih-varian': bukaPilihVarian(id); break;
+      case 'varian-qty': {
+        const f = $('#formVarian');
+        f.qty.value = Math.max(1, num(f.qty.value) + num(el.dataset.n));
+        hitungVarian();
+        break;
+      }
+      case 'varian-saklar': {
+        const nyala = !!el.dataset.v;
+        $$('[data-act=varian-saklar]').forEach((b) => b.setAttribute('aria-pressed', String(b === el)));
+        $('#isiVarian').hidden = !nyala;
+        if (nyala) $('#bagianVarian').scrollIntoView({ block: 'nearest' });
+        hitungForm();
+        break;
+      }
+      case 'varian-contoh': {
+        const c = V.CONTOH.find((x) => x.kode === el.dataset.k);
+        tambahKelompokVarian({ nama: t(c.nama), banyak: c.banyak, pilihan: c.pilihan.map((n) => ({ nama: t(n), harga: 0 })) });
+        break;
+      }
+      case 'varian-grup-baru': tambahKelompokVarian(); break;
+      case 'varian-grup-hapus': el.closest('.varian-grup').remove(); hitungForm(); break;
+      case 'varian-pilihan-baru': {
+        const daftar = $('.daftar-pilihan', el.closest('.varian-grup'));
+        daftar.insertAdjacentHTML('beforeend', barisPilihan());
+        $('[name=vpn]', daftar.lastElementChild).focus();
+        break;
+      }
+      case 'varian-jenis': {
+        const g = el.closest('.varian-grup');
+        $$('[data-act=varian-jenis]', g).forEach((b) => b.setAttribute('aria-pressed', String(b === el)));
+        $('[data-ket-satu]', g).hidden = !!el.dataset.b;
+        hitungForm();
+        break;
+      }
       case 'ke-bahan': dialog.close(); ui.view = 'produk'; ui.produkTab = 'bahan'; render(); bukaFormBahan(); break;
       case 'pilih-harga': {
         const f = $('#formProduk');
@@ -2781,7 +2959,7 @@
       case 'produk-hapus':
         if (confirm(t('Hapus produk ini? Riwayat penjualan tetap tersimpan.'))) {
           change(() => store.remove(id));
-          delete ui.cart[id];
+          Object.keys(ui.cart).forEach((k) => { if (V.urai(k).produkId === id) delete ui.cart[k]; });
           dialog.close();
           render();
         }
@@ -3014,7 +3192,7 @@
     }
     if (e.target.id === 'bayar') {
       ui.bayar = e.target.value;
-      const total = isiKeranjang().reduce((s, x) => s + x.rec.data.harga * x.qty, 0);
+      const total = isiKeranjang().reduce((s, x) => s + x.harga * x.qty, 0);
       const b = num(ui.bayar);
       $('#kembalian').textContent = b >= total ? rp(b - total) : '–';
     }
@@ -3027,6 +3205,13 @@
   // Pilihan di <select> dan file foto memicu `change`, bukan `input`, di sebagian browser.
   document.addEventListener('change', (e) => {
     if (e.target.matches('[data-foto]')) { pilihFoto(e.target); return; }
+    if (e.target.form && e.target.form.id === 'formVarian') { hitungVarian(); return; }
+    if (e.target.name === 'salinVarian' && e.target.value) {
+      const asal = store.get(e.target.value);
+      if (asal) V.salin(asal.data.varian).forEach(tambahKelompokVarian);
+      e.target.value = '';
+      return;
+    }
     if (e.target.form && e.target.form.id === 'formProduk') hitungForm();
     if (e.target.dataset.tanggal && e.target.value) { ui[e.target.dataset.tanggal] = e.target.value; render(); }
     if (e.target.matches('[data-qris]')) pilihQris(e.target);
@@ -3049,6 +3234,11 @@
       dialog.close();
       render();
       toast(t('Produk tersimpan'));
+    }
+    if (f.id === 'formVarian') {
+      e.preventDefault();
+      simpanPilihVarian(f);
+      return;
     }
     if (f.id === 'formTempo') {
       e.preventDefault();

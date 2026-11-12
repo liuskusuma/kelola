@@ -15,7 +15,7 @@
     });
   }
 
-  // jual = { id?, waktu, items: [{ produkId, nama, qty, harga }], bayar, staff?, metode?, pelanggan?, jatuhTempo? }
+  // jual = { id?, waktu, items: [{ produkId, nama, qty, harga, varian?, catatan? }], bayar, staff?, metode?, pelanggan?, jatuhTempo? }
   // metode: 'tunai' (bawaan), 'qris', atau 'nanti' (belum dibayar, jadi tagihan).
   // Modal diambil dari data produk saat ini, jadi staff tidak perlu tahu modal.
   function catatPenjualan(store, H, jual) {
@@ -23,7 +23,11 @@
     const cart = {};
     const items = jual.items.map((i) => {
       cart[i.produkId] = (cart[i.produkId] || 0) + i.qty;
-      return { produkId: i.produkId, nama: i.nama, qty: i.qty, harga: i.harga, modal: H.modalProduk(cari(i.produkId), cari) };
+      const item = { produkId: i.produkId, nama: i.nama, qty: i.qty, harga: i.harga, modal: H.modalProduk(cari(i.produkId), cari) };
+      // Varian dan catatan (lihat js/varian.js) disimpan sebagai teks; `harga` sudah termasuk tambahannya.
+      if (i.varian) item.varian = String(i.varian).slice(0, 200);
+      if (i.catatan) item.catatan = String(i.catatan).slice(0, 80);
+      return item;
     });
     const total = items.reduce((s, i) => s + i.harga * i.qty, 0);
     const laba = items.reduce((s, i) => s + (i.harga - i.modal) * i.qty, 0);
@@ -99,7 +103,7 @@
       catatPenjualan(store, H, {
         id: row.id,
         waktu: d.waktu || row.created_at,
-        items: (d.items || []).map((i) => ({ produkId: i.produkId, nama: i.nama, qty: Number(i.qty) || 0, harga: Number(i.harga) || 0 })),
+        items: (d.items || []).map((i) => ({ produkId: i.produkId, nama: i.nama, qty: Number(i.qty) || 0, harga: Number(i.harga) || 0, varian: i.varian, catatan: i.catatan })),
         bayar: d.bayar,
         metode: d.metode,
         pelanggan: d.pelanggan,
