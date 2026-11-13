@@ -95,6 +95,10 @@ test('pembantu: format kunci, mode uji, status, waktu', async () => {
   assert.ok(m.kunciSah(KUNCI_UJI));
   assert.ok(m.kunciSah('Mid-server-ABCdef123456'));
   assert.ok(!m.kunciSah('Mid-client-ABCdef123456'), 'Client Key bukan Server Key');
+  assert.ok(m.kunciSah('SB-Mid-server-eV9.l8qsTDo_FKQjW63pXyZ'), 'kunci dashboard baru memuat titik');
+  assert.ok(!m.kunciSah('SB-Mid-client-ABCdef123456'));
+  assert.ok(!m.kunciSah('asal'));
+  assert.ok(!m.kunciSah('Mid-server- ada spasi di tengah'));
   assert.ok(m.modeUji(KUNCI_UJI) && !m.modeUji('Mid-server-ABCdef123456'));
   assert.equal(m.statusDari('settlement'), 'lunas');
   assert.equal(m.statusDari('capture'), 'lunas');
