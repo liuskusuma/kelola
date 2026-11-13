@@ -22,6 +22,7 @@
 
   // Pengaturan tampilan dan bahasa disimpan per perangkat, bukan di cloud.
   const setel = KelolaBahasa.bacaPengaturan(window.localStorage);
+  const VERSI = window.KELOLA_VERSI || '';
   let t = KelolaBahasa.buat(setel.bahasa);
   const lokal = () => (setel.bahasa === 'en' ? 'en-GB' : 'id-ID');
 
@@ -349,7 +350,12 @@
     renderTandaLaporan();
     renderSummary();
     const views = { kasir: viewKasir, produk: viewProduk, laporan: viewLaporan, akun: viewAkun };
-    viewEl.innerHTML = viewTawarFaceId() + (ui.view === 'kasir' || ui.view === 'laporan' ? viewPengingat() : '') + views[ui.view]();
+    viewEl.innerHTML = viewTawarFaceId() + (ui.view === 'kasir' || ui.view === 'laporan' ? viewPengingat() : '') + views[ui.view]() + viewVersi('versiHalaman');
+  }
+
+  // Versi aplikasi, kecil di bagian bawah setiap halaman (js/versi.js).
+  function viewVersi(id) {
+    return VERSI ? `<div class="versi" id="${id}">Kelola · Ver ${esc(VERSI)}</div>` : '';
   }
 
   // Label kecil di bawah judul: siapa yang sedang memakai aplikasi.
@@ -475,7 +481,7 @@
         ${cloud.user ? '' : `<p class="tengah">${t('Baru pakai Kelola?')} <button type="button" class="link" data-act="gerbang" data-g="daftar">${t('Daftar')}</button></p>`}
         <div class="tengah">${pilihSetel('bahasa', setel.bahasa, [['en', 'English'], ['id', 'Bahasa Indonesia']])}</div>`;
     }
-    return `<div class="gerbang-isi" id="gerbang">${isi}</div>`;
+    return `<div class="gerbang-isi" id="gerbang">${isi}${viewVersi('versiGerbang')}</div>`;
   }
 
   // Pilih Kasir: HP owner (atau yang sudah punya produk) langsung ke kasir; HP kosong masuk dengan akun staff.
@@ -4141,8 +4147,19 @@
   }
 
   // Kalau data diubah di tab lain pada perangkat yang sama, muat ulang supaya tidak saling menimpa.
+  // Data diubah di tab lain: muat ulang. Untuk data usaha, hanya kalau isinya benar-benar
+  // berubah (bukan sekadar catatan waktu sinkron atau tanda "sudah terkirim"); kalau tidak,
+  // dua tab yang terbuka bisa saling memuat ulang tanpa henti.
+  const intiData = (raw) => {
+    try {
+      const s = JSON.parse(raw || 'null');
+      if (!s || !s.records) return raw;
+      return JSON.stringify([s.meta && s.meta.owner, Object.values(s.records).map((r) => [r.id, r.updated_at, r.deleted]).sort()]);
+    } catch (e) { return raw; }
+  };
   window.addEventListener('storage', (e) => {
-    if (e.key === KelolaStore.KEY || e.key === KelolaBahasa.KEY || e.key === KelolaStaff.KEY) location.reload();
+    if (e.key === KelolaStore.KEY) { if (intiData(e.oldValue) !== intiData(e.newValue)) location.reload(); return; }
+    if (e.key === KelolaBahasa.KEY || e.key === KelolaStaff.KEY) location.reload();
   });
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

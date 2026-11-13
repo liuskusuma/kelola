@@ -718,6 +718,7 @@ async function tab(ctx, errors) {
   // 23. Layar awal saat aplikasi dibuka lagi: owner wajib kata sandi, kasir langsung terbuka.
   const p2 = await tab(hp.ctx, hp.errors);
   await p2.waitForSelector('#gerbang');
+  assert.ok(norm(await p2.textContent('#versiGerbang')).startsWith('Kelola · Ver 1.'));
   await p2.click('#gerbang [data-g=owner]');
   assert.equal(await p2.inputValue('#formGerbang input[name=email]'), USER.email);
   assert.equal(await p2.locator('[data-act=tanpa-akun]').count(), 0, 'HP dengan akun tidak bisa dibuka tanpa kata sandi');
@@ -1106,6 +1107,13 @@ async function tab(ctx, errors) {
   await o.click('#midtransSetel [data-act=midtrans-aktif][data-v=""]');
   await o.waitForFunction(() => Kelola.ui.midtrans && Kelola.ui.midtrans.aktif === false);
   assert.equal(midKunci.get(USER.id).aktif, false);
+  // Versi aplikasi tampil kecil di bawah setiap halaman dan di layar awal.
+  const versi = await o.evaluate(() => window.KELOLA_VERSI);
+  assert.match(versi, /^1\.\d{3}$/);
+  for (const hal of ['Kasir', 'Produk', 'Laporan', 'Akun']) {
+    await o.click(`nav >> text=${hal}`);
+    assert.equal(norm(await o.textContent('#versiHalaman')), 'Kelola · Ver ' + versi);
+  }
 
   assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors, hpVarian.errors, hpOwner.errors), []);
   await browser.close();
