@@ -622,8 +622,6 @@
     'Fitur Midtrans belum disiapkan di server. Ikuti panduan pemasangan Midtrans, lalu buka lagi halaman ini.': 'Midtrans is not set up on the server yet. Follow the Midtrans setup guide, then open this page again.',
     'Tidak bisa memeriksa Midtrans. Periksa internet, lalu coba lagi.': 'Could not check Midtrans. Check your internet, then try again.',
     'Coba lagi': 'Try again',
-    'Tentang Kelola': 'About Kelola',
-    'Versi {versi}': 'Version {versi}',
     'Hubungkan Midtrans': 'Connect Midtrans',
     'Terhubung ke Midtrans (mode uji coba / Sandbox)': 'Connected to Midtrans (test mode / Sandbox)',
     'Terhubung ke Midtrans': 'Connected to Midtrans',

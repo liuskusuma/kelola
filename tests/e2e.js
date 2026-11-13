@@ -1107,10 +1107,13 @@ async function tab(ctx, errors) {
   await o.click('#midtransSetel [data-act=midtrans-aktif][data-v=""]');
   await o.waitForFunction(() => Kelola.ui.midtrans && Kelola.ui.midtrans.aktif === false);
   assert.equal(midKunci.get(USER.id).aktif, false);
-  // Versi aplikasi tampil di Akun -> Pengaturan dan di layar awal.
+  // Versi aplikasi tampil kecil di bawah setiap halaman dan di layar awal.
   const versi = await o.evaluate(() => window.KELOLA_VERSI);
   assert.match(versi, /^1\.\d{3}$/);
-  assert.equal(norm(await o.textContent('#tentang')), 'Tentang KelolaVersi ' + versi);
+  for (const hal of ['Kasir', 'Produk', 'Laporan', 'Akun']) {
+    await o.click(`nav >> text=${hal}`);
+    assert.equal(norm(await o.textContent('#versiHalaman')), 'Kelola · Ver ' + versi);
+  }
 
   assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors, hpVarian.errors, hpOwner.errors), []);
   await browser.close();
