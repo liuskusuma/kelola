@@ -2047,7 +2047,11 @@
       <div class="row"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>
       <img class="qris-gambar besar" id="qrisGambar" data-terisi="${total}" src="${gambar}" alt="QRIS">
       ${sampai ? `<div class="small muted tengah">${t('QRIS Midtrans · berlaku sampai {jam}', { jam: sampai })}</div>` : ''}
-      ${d.uji ? `<div class="small warn">${t('Mode uji coba (Sandbox): bayar memakai simulator Midtrans, bukan aplikasi bayar sungguhan.')}</div>` : ''}
+      ${d.uji ? `<div class="stack" id="qrisSimulator"><div class="small warn">${t('Mode uji coba (Sandbox): bayar memakai simulator Midtrans, bukan aplikasi bayar sungguhan.')}</div>
+        ${d.gambar ? `<div class="small muted">${t('Salin link di bawah, buka simulator QRIS, tempel di "QR Code Image Url", lalu tekan Scan QR.')}</div>
+        <input class="link-uji" id="qrisLinkUji" readonly value="${esc(d.gambar)}">
+        <div class="foto-aksi"><button type="button" class="btn kecil" data-act="salin-link-qr">${t('Salin link QR')}</button>
+          <a class="link small" href="https://simulator.sandbox.midtrans.com/v2/qris/index" target="_blank" rel="noopener">${t('Buka simulator QRIS')}</a></div>` : ''}</div>` : ''}
       <div class="tunggu-bayar" id="qrisStatus"><span class="putar" aria-hidden="true"></span>${t('Menunggu pembayaran…')}</div>
       <div class="small muted">${t('Bisa dibayar dari GoPay, OVO, DANA, ShopeePay, atau m-banking. Penjualan tersimpan otomatis setelah dibayar.')}</div>
       <button type="button" class="link small" data-act="qris-manual">${t('Sudah bayar tapi belum masuk? Tandai lunas manual')}</button>
@@ -2104,6 +2108,13 @@
       <button class="btn primary block" data-act="tutup">${t('Penjualan baru')}</button>
     </div>`;
     if (!dialog.open) dialog.showModal();
+  }
+
+  // Mode uji: salin link gambar QR untuk simulator Midtrans.
+  async function salinLinkQr() {
+    const el = $('#qrisLinkUji');
+    if (!el) return;
+    try { await navigator.clipboard.writeText(el.value); toast(t('Link QR disalin')); } catch (e) { el.focus(); el.select(); }
   }
 
   // Kasir sudah melihat uang masuk walau Midtrans belum melapor.
@@ -3418,6 +3429,7 @@
       case 'midtrans-putus': if (confirm(t('Putuskan Midtrans? Kasir kembali memakai QRIS biasa.'))) setelMidtrans({ aksi: 'hapus' }); break;
       case 'midtrans-muat': ui.midtrans = null; render(); break;
       case 'qris-manual': lunasManualMidtrans(); break;
+      case 'salin-link-qr': salinLinkQr(); break;
       case 'qris-polos': bukaQris(true); break;
       case 'setel-qris-nominal':
         if (modeStaff() || modeKunci()) break;

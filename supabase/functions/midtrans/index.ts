@@ -202,7 +202,10 @@ export function buatPenangan({ url, kunciServer, fetchFn, sekarang, acak }) {
         method: 'POST',
         body: { order_id: orderId, owner_id: p.owner, dibuat_oleh: u.id, sumber: 'kasir', jumlah, kedaluwarsa },
       });
-      return { order_id: orderId, qr: data.qr_string, kedaluwarsa, uji: modeUji(k.server_key) };
+      const uji = modeUji(k.server_key);
+      // Mode uji: link gambar QR dari Midtrans, untuk ditempel di simulator QRIS Midtrans.
+      const aksiQr = (data.actions || []).find((a) => a && /generate-qr-code/.test(a.name || ''));
+      return Object.assign({ order_id: orderId, qr: data.qr_string, kedaluwarsa, uji }, uji && aksiQr && aksiQr.url ? { gambar: aksiQr.url } : {});
     },
 
     async status(p, body) {
