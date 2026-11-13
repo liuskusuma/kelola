@@ -22,6 +22,7 @@
 
   // Pengaturan tampilan dan bahasa disimpan per perangkat, bukan di cloud.
   const setel = KelolaBahasa.bacaPengaturan(window.localStorage);
+  const VERSI = window.KELOLA_VERSI || '';
   let t = KelolaBahasa.buat(setel.bahasa);
   const lokal = () => (setel.bahasa === 'en' ? 'en-GB' : 'id-ID');
 
@@ -475,7 +476,7 @@
         ${cloud.user ? '' : `<p class="tengah">${t('Baru pakai Kelola?')} <button type="button" class="link" data-act="gerbang" data-g="daftar">${t('Daftar')}</button></p>`}
         <div class="tengah">${pilihSetel('bahasa', setel.bahasa, [['en', 'English'], ['id', 'Bahasa Indonesia']])}</div>`;
     }
-    return `<div class="gerbang-isi" id="gerbang">${isi}</div>`;
+    return `<div class="gerbang-isi" id="gerbang">${isi}<div class="versi" id="versiGerbang">Kelola · Ver ${esc(VERSI)}</div></div>`;
   }
 
   // Pilih Kasir: HP owner (atau yang sudah punya produk) langsung ke kasir; HP kosong masuk dengan akun staff.
@@ -1581,6 +1582,8 @@
     return `<div class="group-title">${t('Pengaturan')}</div><div class="card stack" id="pengaturan">
       <div class="field"><span class="lbl">${t('Bahasa')}</span>${pilihSetel('bahasa', setel.bahasa, [['id', 'Bahasa Indonesia'], ['en', 'English']])}</div>
       <div class="field"><span class="lbl">${t('Tampilan')}</span>${pilihSetel('tema', setel.tema, [['terang', t('Terang')], ['gelap', t('Gelap')], ['otomatis', t('Ikuti HP')]])}</div>
+      <hr class="pemisah">
+      <div class="row" id="tentang"><span class="lbl">${t('Tentang Kelola')}</span><span class="small muted">${t('Versi {versi}', { versi: esc(VERSI) })}</span></div>
       </div>`;
   }
 
