@@ -63,6 +63,10 @@
     faceIdBisa: null, // HP ini punya Face ID / sidik jari untuk web (null = belum dicek)
     faceIdMsg: null,
     tawarFaceId: null, // id akun yang baru masuk dengan kata sandi: tawarkan Face ID
+    midtrans: null, // status QRIS Midtrans akun ini: { terhubung, aktif, uji } | { belumSiap } | { gagal } | { memuat }
+    midtransMsg: null,
+    bayarOnline: null, // QRIS Midtrans yang sedang ditunggu di kasir: { order, total }
+    midtransOrder: null, // pesanan Midtrans untuk penjualan yang akan disimpan
   };
 
   const cloud = {
@@ -831,6 +835,12 @@
   // Isian di keranjang sesuai cara bayar.
   function isianBayar(total, bayar) {
     if (ui.metode === 'qris') {
+      // Status Midtrans bisa diubah owner kapan saja: periksa lagi kalau sudah lebih dari 30 detik.
+      if (cloud.user && cloud.client && (!ui.midtrans || (!ui.midtrans.memuat && Date.now() - (ui.midtrans.waktu || 0) > 30000))) muatMidtrans().then(renderAman);
+      if (midtransSiap()) {
+        return `<button class="btn block" style="margin-top:14px" data-act="qris">${t('Tampilkan QRIS')}</button>
+           <div class="small muted" style="margin-top:8px">${t('QRIS Midtrans: penjualan tersimpan otomatis setelah pembeli membayar.')}</div>`;
+      }
       return usaha().qris
         ? `<button class="btn block" style="margin-top:14px" data-act="qris">${t('Tampilkan QRIS')}</button>
            <div class="small muted" style="margin-top:8px">${t('Simpan setelah pembayaran masuk ke rekening atau e-wallet Anda.')}</div>`
@@ -1193,7 +1203,7 @@
 
   // Pesan WhatsApp yang pendek. Nomor rekening dan nominal ditulis di baris sendiri,
   // hanya angka, supaya pembeli bisa langsung menyalinnya ke m-banking.
-  function teksTagihan(d) {
+  function teksTagihan(d, link) {
     const p = profil();
     const sisa = Math.round(P.sisaTagihan(d));
     const baris = [t('Halo {nama}, tagihan dari {usaha} {jumlah}.', { nama: d.pelanggan.nama, usaha: p.namaUsaha || 'Kelola', jumlah: rp(sisa) })];
@@ -1201,6 +1211,7 @@
       baris.push('', r.nama ? t('Nomor rekening {bank} a.n. {nama}:', { bank: r.bank, nama: r.nama }) : t('Nomor rekening {bank}:', { bank: r.bank }), T.nomorPolos(r.nomor));
     });
     baris.push('', t('Nominal:'), String(sisa));
+    if (link) baris.push('', t('Bayar online (QRIS, e-wallet, transfer bank):'), link);
     if (p.qris) baris.push('', t('Bisa juga bayar lewat QRIS di gambar.'));
     baris.push('', t('Terima kasih 🙏'));
     return baris.join('\n');
@@ -1459,7 +1470,7 @@
     const r = store.get(id);
     if (!r || !r.data.pelanggan) return;
     const d = r.data;
-    const teks = teksTagihan(d);
+    const teks = teksTagihan(d, await linkBayarMidtrans(id, d));
     const no = P.nomorWa(d.pelanggan.wa);
     const waUrl = `https://wa.me/${no}?text=${encodeURIComponent(teks)}`;
     const canvas = await gambarTagihan(d);
@@ -1830,6 +1841,7 @@
           ${q ? `<button type="button" class="link small danger" data-act="hapus-qris">${t('Hapus QRIS')}</button>` : ''}
         </div>
         ${q ? statusQrisNominal(p) : ''}
+        ${viewMidtrans()}
       </div>
       <hr class="pemisah">
       <div><div class="label">${t('Rekening & e-wallet')}</div><div class="small muted">${t('Tampil di gambar tagihan dan pesan WhatsApp.')}</div></div>
@@ -1901,6 +1913,246 @@
     const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
     return Uint8Array.from(b, (c) => c.charCodeAt(0));
   };
+
+  // ---------- QRIS Midtrans (Edge Function `midtrans`, supabase/midtrans.sql) ----------
+  // Server Key Midtrans milik owner hanya ada di server. HP (owner maupun staff) hanya
+  // meminta QR, menanyakan status, dan mengambil pembayaran tagihan lewat fungsi ini.
+
+  const FUNGSI_MIDTRANS = 'midtrans';
+  const midtransSiap = () => !!(ui.midtrans && ui.midtrans.terhubung && ui.midtrans.aktif);
+  const tunggu = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+  async function panggilMidtrans(body, batas) {
+    if (!cloud.client || !cloud.user || !navigator.onLine) throw new Error('offline');
+    const kerja = cloud.client.functions.invoke(FUNGSI_MIDTRANS, { body }).then(async ({ data, error }) => {
+      if (!error) return data || {};
+      let isi = null;
+      try { isi = error.context && typeof error.context.json === 'function' ? await error.context.json() : null; } catch (e) { isi = null; }
+      const err = new Error((isi && (isi.pesan || isi.error)) || error.message || 'gagal');
+      err.kode = isi && isi.error;
+      err.status = error.context && error.context.status;
+      throw err;
+    });
+    if (!batas) return kerja;
+    return Promise.race([kerja, tunggu(batas).then(() => { throw new Error('waktu habis'); })]);
+  }
+
+  // Fungsi atau tabel Midtrans belum dipasang di Supabase.
+  const midtransBelumSiap = (e) => !!e && ((e.status === 404 && !e.kode) || /midtrans_(kunci|bayar)|PGRST205|does not exist|Function not found/i.test(e.message || ''));
+
+  let midtransJalan = null;
+  function muatMidtrans() {
+    if (!cloud.client || !cloud.user) return Promise.resolve(null);
+    if (midtransJalan) return midtransJalan;
+    ui.midtrans = Object.assign({}, ui.midtrans, { memuat: true });
+    midtransJalan = panggilMidtrans({ aksi: 'cek' }, 10000).then(
+      (d) => { ui.midtrans = { terhubung: !!d.terhubung, aktif: !!d.aktif, uji: !!d.uji, waktu: Date.now() }; },
+      (e) => { ui.midtrans = Object.assign(midtransBelumSiap(e) ? { belumSiap: true } : { gagal: true }, { waktu: Date.now() }); },
+    ).then(() => { midtransJalan = null; return ui.midtrans; });
+    return midtransJalan;
+  }
+
+  function viewMidtrans() {
+    if (modeStaff()) return '';
+    const m = ui.midtrans;
+    const ket = `<div class="small muted">${t('Lunas tercatat otomatis, tidak perlu cek mutasi. Biaya sekitar 0,7% per transaksi, dipotong Midtrans dari dana yang masuk.')}</div>`;
+    const judul = `<div><div class="label">${t('QRIS Midtrans')}</div>${ket}</div>`;
+    let isi;
+    if (!cloudReady || !cloud.user) isi = `${judul}<div class="small muted">${t('Masuk ke akun dulu (Simpan ke cloud) supaya bisa memakai Midtrans.')}</div>`;
+    else if (!m || m.memuat) {
+      if (!m) muatMidtrans().then(() => { if (ui.view === 'akun' && !dialog.open) render(); });
+      isi = `${judul}<div class="small muted">${t('Memeriksa Midtrans…')}</div>`;
+    } else if (m.belumSiap) isi = `${judul}<div class="small muted" data-midtrans="belum-siap">${t('Fitur Midtrans belum disiapkan di server. Ikuti panduan pemasangan Midtrans, lalu buka lagi halaman ini.')}</div>`;
+    else if (m.gagal) isi = `${judul}<div class="small warn">${t('Tidak bisa memeriksa Midtrans. Periksa internet, lalu coba lagi.')}</div><button type="button" class="btn kecil" data-act="midtrans-muat">${t('Coba lagi')}</button>`;
+    else if (!m.terhubung) isi = `${judul}<button type="button" class="btn kecil" data-act="midtrans-hubungkan">${t('Hubungkan Midtrans')}</button>`;
+    else {
+      isi = `<div class="row">${judul}
+          <div class="seg kecil saklar" role="group"><button data-act="midtrans-aktif" data-v="1" aria-pressed="${m.aktif}">${t('Aktif')}</button>
+            <button data-act="midtrans-aktif" data-v="" aria-pressed="${!m.aktif}">${t('Mati')}</button></div></div>
+        <div class="msg ok" id="midtransTerhubung">${m.uji ? t('Terhubung ke Midtrans (mode uji coba / Sandbox)') : t('Terhubung ke Midtrans')}</div>
+        ${m.aktif ? `<div class="small muted">${t('Kasir dan link bayar tagihan memakai Midtrans. Kalau Midtrans tidak bisa dihubungi, kasir kembali ke QRIS biasa.')}</div>` : ''}
+        <div class="foto-aksi"><button type="button" class="btn kecil" data-act="midtrans-hubungkan">${t('Ganti Server Key')}</button>
+          <button type="button" class="link small danger" data-act="midtrans-putus">${t('Putuskan Midtrans')}</button></div>`;
+    }
+    return `<hr class="pemisah"><div id="midtransSetel" class="stack">${isi}${pesan(ui.midtransMsg)}</div>`;
+  }
+
+  function bukaHubungkanMidtrans() {
+    ui.midtransMsg = null;
+    dialog.innerHTML = `<form id="formMidtrans" class="stack" method="dialog">
+      <div class="row"><h3>${t('Hubungkan Midtrans')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+      <ol class="langkah-midtrans small">
+        <li>${t('Daftar akun di midtrans.com, lalu lengkapi data usaha sampai disetujui Midtrans.')}</li>
+        <li>${t('Buka Dashboard Midtrans → Settings → Access Keys.')}</li>
+        <li>${t('Salin Server Key, lalu tempel di bawah. Untuk mencoba tanpa uang sungguhan, pakai Server Key Sandbox (diawali SB-).')}</li>
+      </ol>
+      <a class="link small" href="https://dashboard.midtrans.com/register" target="_blank" rel="noopener">${t('Buka midtrans.com')}</a>
+      <label class="field"><span>${t('Server Key')}</span><input name="serverKey" id="midtransKunci" autocomplete="off" autocapitalize="off" spellcheck="false" required placeholder="Mid-server-…"></label>
+      <div id="midtransMsg"></div>
+      <button class="btn primary block" type="submit">${t('Cek & simpan')}</button>
+      <div class="small muted">${t('Kunci disimpan di server Kelola, tidak tampil lagi di HP, dan tidak dikirim ke HP staff.')}</div>
+    </form>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function pesanMidtrans(e) {
+    if (e && e.kode === 'format') return t('Server Key tidak sesuai. Pastikan yang disalin Server Key (diawali Mid-server- atau SB-Mid-server-), bukan Client Key.');
+    if (e && e.kode === 'kunci-salah') return t('Server Key ditolak Midtrans. Salin ulang dari Dashboard Midtrans → Settings → Access Keys.');
+    if (midtransBelumSiap(e)) return t('Fitur Midtrans belum disiapkan di server. Ikuti panduan pemasangan Midtrans, lalu buka lagi halaman ini.');
+    return t('Gagal menghubungi Midtrans. Periksa internet, lalu coba lagi.');
+  }
+
+  async function simpanKunciMidtrans(f) {
+    const tombol = $('button[type=submit]', f);
+    tombol.disabled = true;
+    $('#midtransMsg').innerHTML = `<div class="small muted">${t('Memeriksa Server Key…')}</div>`;
+    try {
+      const d = await panggilMidtrans({ aksi: 'simpan', serverKey: f.serverKey.value }, 20000);
+      ui.midtrans = { terhubung: !!d.terhubung, aktif: !!d.aktif, uji: !!d.uji, waktu: Date.now() };
+      dialog.close();
+      render();
+      toast(t('Midtrans terhubung'));
+    } catch (e) {
+      $('#midtransMsg').innerHTML = pesan({ type: 'err', text: pesanMidtrans(e) });
+      tombol.disabled = false;
+    }
+  }
+
+  async function setelMidtrans(body) {
+    ui.midtransMsg = null;
+    try {
+      const d = await panggilMidtrans(body, 15000);
+      ui.midtrans = { terhubung: !!d.terhubung, aktif: !!d.aktif, uji: !!d.uji, waktu: Date.now() };
+    } catch (e) {
+      ui.midtransMsg = { type: 'err', text: pesanMidtrans(e) };
+    }
+    render();
+  }
+
+  // Kasir: buat QRIS Midtrans untuk total keranjang, lalu tunggu sampai dibayar.
+  // false = Midtrans tidak bisa dipakai (kasir kembali ke QRIS biasa).
+  async function bukaQrisMidtrans(total) {
+    dialog.innerHTML = `<div class="stack" id="qrisKasir"><div class="row"><h3>${t('Bayar dengan QRIS')}</h3></div>
+      <div class="tunggu-bayar"><span class="putar" aria-hidden="true"></span>${t('Membuat QRIS…')}</div></div>`;
+    if (!dialog.open) dialog.showModal();
+    let d;
+    try { d = await panggilMidtrans({ aksi: 'qris', jumlah: total }, 15000); } catch (e) { return false; }
+    if (!d || !d.qr || !d.order_id) return false;
+    const gambar = kanvasQr(d.qr, 720).toDataURL('image/png');
+    const sampai = d.kedaluwarsa ? new Date(d.kedaluwarsa).toLocaleTimeString(setel.bahasa === 'en' ? 'en-GB' : 'id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+    const bayar = { order: d.order_id, total };
+    ui.bayarOnline = bayar;
+    dialog.innerHTML = `<div class="stack" id="qrisKasir" data-midtrans="${esc(d.order_id)}">
+      <div class="row"><h3>${t('Bayar dengan QRIS')}</h3><button type="button" class="link" data-act="tutup">${t('Batalkan')}</button></div>
+      <div class="row"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>
+      <img class="qris-gambar besar" id="qrisGambar" data-terisi="${total}" src="${gambar}" alt="QRIS">
+      ${sampai ? `<div class="small muted tengah">${t('QRIS Midtrans · berlaku sampai {jam}', { jam: sampai })}</div>` : ''}
+      ${d.uji ? `<div class="small warn">${t('Mode uji coba (Sandbox): bayar memakai simulator Midtrans, bukan aplikasi bayar sungguhan.')}</div>` : ''}
+      <div class="tunggu-bayar" id="qrisStatus"><span class="putar" aria-hidden="true"></span>${t('Menunggu pembayaran…')}</div>
+      <div class="small muted">${t('Bisa dibayar dari GoPay, OVO, DANA, ShopeePay, atau m-banking. Penjualan tersimpan otomatis setelah dibayar.')}</div>
+      <button type="button" class="link small" data-act="qris-manual">${t('Sudah bayar tapi belum masuk? Tandai lunas manual')}</button>
+    </div>`;
+    // Dialog ditutup sebelum lunas: batalkan QRIS di Midtrans supaya tidak bisa dibayar lagi.
+    dialog.addEventListener('close', async () => {
+      if (ui.bayarOnline !== bayar) return;
+      ui.bayarOnline = null;
+      try {
+        const r = await panggilMidtrans({ aksi: 'batal', order_id: bayar.order }, 15000);
+        if (r.status === 'lunas') selesaiMidtrans(bayar, r.metode);
+      } catch (e) { /* QRIS akan kedaluwarsa sendiri */ }
+    }, { once: true });
+    tungguMidtrans(bayar);
+    return true;
+  }
+
+  async function tungguMidtrans(bayar) {
+    while (ui.bayarOnline === bayar) {
+      await tunggu(3000);
+      if (ui.bayarOnline !== bayar) return;
+      let r;
+      try { r = await panggilMidtrans({ aksi: 'status', order_id: bayar.order }, 10000); } catch (e) { continue; }
+      if (ui.bayarOnline !== bayar) return;
+      if (r.status === 'lunas') { ui.bayarOnline = null; selesaiMidtrans(bayar, r.metode); return; }
+      if (r.status !== 'pending') {
+        ui.bayarOnline = null;
+        const el = $('#qrisStatus');
+        if (el) el.outerHTML = `<div class="msg err" id="qrisStatus">${r.status === 'kedaluwarsa' ? t('QRIS sudah kedaluwarsa. Tutup lalu tampilkan QRIS lagi.') : t('Pembayaran dibatalkan atau gagal. Tutup lalu coba lagi.')}</div>`;
+        return;
+      }
+    }
+  }
+
+  const namaMetode = (m) => {
+    const [jenis, penerbit] = String(m || '').split('/');
+    const nama = { qris: 'QRIS', gopay: 'GoPay', shopeepay: 'ShopeePay', bank_transfer: t('Transfer bank'), dana: 'DANA', ovo: 'OVO' };
+    return [jenis, penerbit].filter(Boolean).map((x) => nama[x] || x.toUpperCase()).join(' · ');
+  };
+
+  // Pembeli sudah membayar: simpan penjualan, lalu tampilkan tanda lunas.
+  function selesaiMidtrans(bayar, metode) {
+    ui.metode = 'qris';
+    ui.midtransOrder = bayar.order;
+    simpanPenjualan();
+    const jam = new Date().toLocaleTimeString(setel.bahasa === 'en' ? 'en-GB' : 'id-ID', { hour: '2-digit', minute: '2-digit' });
+    dialog.innerHTML = `<div class="stack tengah" id="bayarDiterima">
+      <div class="centang" aria-hidden="true">✓</div>
+      <h3>${t('Pembayaran diterima')}</h3>
+      <div class="total">${rp(bayar.total)}</div>
+      <div class="small muted">${esc([namaMetode(metode) || 'QRIS', jam].join(' · '))}</div>
+      <div class="small muted">${t('Dana masuk ke saldo Midtrans, dipotong biaya sekitar 0,7%, lalu dicairkan ke rekening usaha.')}</div>
+      ${ui.trxTerakhir ? `<button class="btn block" data-act="struk" data-id="${ui.trxTerakhir}">${t('Struk')}</button>` : ''}
+      <button class="btn primary block" data-act="tutup">${t('Penjualan baru')}</button>
+    </div>`;
+    if (!dialog.open) dialog.showModal();
+  }
+
+  // Kasir sudah melihat uang masuk walau Midtrans belum melapor.
+  function lunasManualMidtrans() {
+    ui.bayarOnline = null;
+    dialog.close();
+    ui.metode = 'qris';
+    simpanPenjualan();
+  }
+
+  // Link bayar Midtrans untuk pesan tagihan. Kosong kalau Midtrans tidak aktif atau gagal.
+  async function linkBayarMidtrans(id, d) {
+    if (modeStaff() || !midtransSiap()) return '';
+    const sisa = Math.round(P.sisaTagihan(d));
+    if (!(sisa > 0)) return '';
+    let hari = 7;
+    if (d.jatuhTempo) hari = Math.ceil((new Date(d.jatuhTempo + 'T23:59:59+07:00') - Date.now()) / 86400000);
+    try {
+      const r = await panggilMidtrans({ aksi: 'link', ref: id, jumlah: sisa, nama: d.pelanggan.nama, hari: Math.min(30, Math.max(3, hari)) }, 8000);
+      return r.link || '';
+    } catch (e) { return ''; }
+  }
+
+  // HP owner: catat pembayaran tagihan yang masuk lewat link Midtrans.
+  let bayarMidtransJalan = false;
+  async function prosesBayarMidtrans() {
+    if (cloud.peran !== 'owner' || !cloud.user || bayarMidtransJalan) return;
+    if (!ui.midtrans || ui.midtrans.gagal) await muatMidtrans();
+    if (!ui.midtrans || !ui.midtrans.terhubung) return;
+    bayarMidtransJalan = true;
+    try {
+      const d = await panggilMidtrans({ aksi: 'ambil' }, 20000);
+      const rows = d.bayar || [];
+      if (!rows.length) return;
+      let hasil = [];
+      change(() => { hasil = P.olahBayarMidtrans(store, rows); });
+      if (!hasil.length) return;
+      renderAman();
+      const r = hasil[0];
+      const jumlah = (rows.find((b) => b.ref === r.id) || {}).jumlah || 0;
+      toast(hasil.length === 1
+        ? t('{nama} membayar tagihan {jumlah} lewat Midtrans', { nama: r.data.pelanggan.nama, jumlah: rp(jumlah) })
+        : t('{n} tagihan dibayar lewat Midtrans', { n: hasil.length }));
+    } catch (e) {
+      console.warn('Gagal mengambil pembayaran Midtrans', e);
+    } finally {
+      bayarMidtransJalan = false;
+    }
+  }
 
   async function panggilFungsiNotif(body) {
     const { data, error } = await cloud.client.functions.invoke(FUNGSI_NOTIF, { body });
@@ -2402,8 +2654,19 @@
   // `polos` = tampilkan gambar QRIS biasa (untuk aplikasi pembeli yang menolak QR bernominal).
   async function bukaQris(polos) {
     const q = usaha().qris;
-    if (!q) return;
     const total = isiKeranjang().reduce((s, x) => s + x.harga * x.qty, 0);
+    let catatan = '';
+    if (!polos && total > 0 && midtransSiap()) {
+      if (await bukaQrisMidtrans(total)) return;
+      catatan = t('Midtrans tidak bisa dihubungi, jadi memakai QRIS biasa. Cek pembayaran masuk sendiri.');
+      if (!q) {
+        dialog.innerHTML = `<div class="stack" id="qrisKasir"><div class="row"><h3>${t('Bayar dengan QRIS')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
+          <div class="msg err">${t('Midtrans tidak bisa dihubungi. Periksa internet lalu coba lagi, atau pilih cara bayar lain.')}</div></div>`;
+        if (!dialog.open) dialog.showModal();
+        return;
+      }
+    }
+    if (!q) return;
     let gambar = q;
     let terisi = false;
     if (!polos && total > 0) {
@@ -2415,6 +2678,7 @@
     dialog.innerHTML = `<div class="stack" id="qrisKasir">
       <div class="row"><h3>${t('Bayar dengan QRIS')}</h3><button type="button" class="link" data-act="tutup">${t('Tutup')}</button></div>
       ${total ? `<div class="row"><span class="label">${t('Total')}</span><span class="total">${rp(total)}</span></div>` : ''}
+      ${catatan ? `<div class="small warn" id="qrisCatatan">${esc(catatan)}</div>` : ''}
       <img class="qris-gambar besar" id="qrisGambar" data-terisi="${terisi ? total : ''}" src="${esc(gambar)}" alt="QRIS">
       ${terisi ? `<div class="msg ok" id="qrisTerisi">${t('Nominal {jumlah} sudah terisi. Pembeli tinggal memindai dan membayar.', { jumlah: rp(total) })}</div>` : ''}
       <div class="small muted">${t('Minta pembeli memindai kode ini, lalu cek notifikasi pembayaran masuk sebelum menyimpan penjualan.')}</div>
@@ -2928,6 +3192,8 @@
     };
     const total = jual.items.reduce((s, i) => s + i.harga * i.qty, 0);
     jual.metode = ui.metode;
+    if (ui.metode === 'qris' && ui.midtransOrder) jual.midtrans = ui.midtransOrder;
+    ui.midtransOrder = null;
     jual.bayar = ui.metode === 'tunai' ? num(ui.bayar) || total : ui.metode === 'qris' ? total : 0;
     if (ui.metode === 'nanti') {
       const nama = ui.pelanggan.nama.trim();
@@ -3147,6 +3413,11 @@
       case 'batal-trx': batalTransaksi(id); break;
       case 'periode': ui.periode = el.dataset.p; render(); break;
       case 'qris': bukaQris(); break;
+      case 'midtrans-hubungkan': bukaHubungkanMidtrans(); break;
+      case 'midtrans-aktif': setelMidtrans({ aksi: 'aktif', aktif: !!el.dataset.v }); break;
+      case 'midtrans-putus': if (confirm(t('Putuskan Midtrans? Kasir kembali memakai QRIS biasa.'))) setelMidtrans({ aksi: 'hapus' }); break;
+      case 'midtrans-muat': ui.midtrans = null; render(); break;
+      case 'qris-manual': lunasManualMidtrans(); break;
       case 'qris-polos': bukaQris(true); break;
       case 'setel-qris-nominal':
         if (modeStaff() || modeKunci()) break;
@@ -3384,6 +3655,11 @@
     if (f.id === 'formKategori') {
       e.preventDefault();
       simpanAturKategori(f);
+      return;
+    }
+    if (f.id === 'formMidtrans') {
+      e.preventDefault();
+      simpanKunciMidtrans(f);
       return;
     }
     if (f.id === 'formLunas') {
@@ -3649,6 +3925,7 @@
       cloud.status = 'idle';
       kasirStaff = null;
       ui.staff = { list: null, kode: null, msg: null, belumSiap: false, memuat: false };
+      ui.midtrans = null;
       return;
     }
     if (prev === user.id && cloud.peran) return;
@@ -3662,6 +3939,7 @@
       ui.cart = {};
       ui.trxTerakhir = null;
       ui.laporanFile = null;
+      ui.midtrans = null;
     }
     cloud.staffApi = S.supabaseStaff(cloud.client);
     const peran = await cekPeran(user);
@@ -3686,7 +3964,7 @@
       if (loud) toast(t('Tidak ada koneksi internet'));
       return Promise.resolve();
     }
-    const jalan = modeStaff() ? syncStaff() : cloud.sync.run().then(prosesPenjualanStaff);
+    const jalan = modeStaff() ? syncStaff() : cloud.sync.run().then(prosesPenjualanStaff).then(prosesBayarMidtrans);
     return jalan.then(
       () => { if (loud) toast(t('Data sudah sinkron')); },
       (err) => { console.warn('Sinkronisasi gagal', err); },

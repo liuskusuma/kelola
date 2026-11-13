@@ -35,6 +35,7 @@
     const metode = METODE.includes(jual.metode) ? jual.metode : 'tunai';
     const data = { waktu: jual.waktu, items, total, laba, bayar: metode === 'nanti' ? 0 : jual.bayar || total, potong, metode };
     if (jual.staff) data.staff = jual.staff;
+    if (jual.midtrans && metode === 'qris') data.midtrans = String(jual.midtrans).slice(0, 50);
     if (metode === 'nanti') {
       const pl = jual.pelanggan || {};
       data.pelanggan = { nama: String(pl.nama || '').trim() || 'Pelanggan', wa: String(pl.wa || '').trim() };
@@ -61,12 +62,26 @@
   function catatBayar(store, id, bayar) {
     const trx = store.get(id);
     if (!trx || trx.data.metode !== 'nanti' || !(bayar.jumlah > 0)) return null;
-    const dibayar = (trx.data.dibayar || []).concat([{
+    const dibayar = (trx.data.dibayar || []).concat([Object.assign({
       waktu: bayar.waktu, jumlah: bayar.jumlah, metode: bayar.metode === 'qris' ? 'qris' : 'tunai',
-    }]);
+    }, bayar.midtrans ? { midtrans: String(bayar.midtrans) } : {})]);
     const d = Object.assign({}, trx.data, { dibayar });
     d.lunas = sisaTagihan(d) <= 0;
     return store.put('transaksi', d, id);
+  }
+
+  // Pembayaran tagihan lewat link Midtrans (dari Edge Function `midtrans`, aksi 'ambil').
+  // Satu pesanan Midtrans hanya dicatat sekali. Mengembalikan transaksi yang berubah.
+  function olahBayarMidtrans(store, rows) {
+    const hasil = [];
+    (rows || []).forEach((b) => {
+      const trx = b && store.get(b.ref);
+      if (!trx || trx.data.metode !== 'nanti') return;
+      if ((trx.data.dibayar || []).some((x) => x.midtrans === b.order_id)) return;
+      const rec = catatBayar(store, b.ref, { waktu: b.dibayar || new Date().toISOString(), jumlah: Number(b.jumlah), metode: 'qris', midtrans: b.order_id });
+      if (rec) hasil.push(rec);
+    });
+    return hasil;
   }
 
   // Nomor WhatsApp untuk tautan wa.me: hanya angka, diawali kode negara 62.
@@ -115,7 +130,7 @@
     return n;
   }
 
-  const api = { ubahStok, catatPenjualan, batalPenjualan, olahPenjualanStaff, sisaTagihan, catatBayar, nomorWa };
+  const api = { ubahStok, catatPenjualan, batalPenjualan, olahPenjualanStaff, sisaTagihan, catatBayar, olahBayarMidtrans, nomorWa };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.KelolaPenjualan = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

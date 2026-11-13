@@ -85,3 +85,24 @@ test('nomor WhatsApp dirapikan untuk wa.me', () => {
   assert.equal(P.nomorWa('12'), '');
   assert.equal(P.nomorWa(''), '');
 });
+
+test('pembayaran tagihan lewat Midtrans dicatat sekali dan melunasi', () => {
+  const { store, kue } = siapkan();
+  const trx = P.catatPenjualan(store, H, {
+    waktu: '2026-11-13T01:00:00Z', items: [{ produkId: kue.id, nama: 'Kue', qty: 4, harga: 5000 }],
+    metode: 'nanti', pelanggan: { nama: 'Budi', wa: '' },
+  });
+  const tunai = P.catatPenjualan(store, H, { waktu: '2026-11-13T01:00:00Z', items: [{ produkId: kue.id, nama: 'Kue', qty: 1, harga: 5000 }] });
+  const rows = [
+    { order_id: 'KL-1', ref: trx.id, jumlah: 20000, metode: 'qris/gopay', dibayar: '2026-11-13T02:00:00Z' },
+    { order_id: 'KL-2', ref: 'tidak-ada', jumlah: 1000 },
+    { order_id: 'KL-3', ref: tunai.id, jumlah: 5000 },
+  ];
+  const hasil = P.olahBayarMidtrans(store, rows);
+  assert.equal(hasil.length, 1);
+  const d = store.get(trx.id).data;
+  assert.equal(d.lunas, true);
+  assert.deepEqual(d.dibayar, [{ waktu: '2026-11-13T02:00:00Z', jumlah: 20000, metode: 'qris', midtrans: 'KL-1' }]);
+  assert.equal(P.olahBayarMidtrans(store, rows).length, 0, 'tidak dicatat dua kali');
+  assert.equal(store.get(trx.id).data.dibayar.length, 1);
+});

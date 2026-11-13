@@ -20,6 +20,10 @@ const staff = [];
 const undangan = new Map();
 const penjualan = new Map();
 const log = [];
+// Edge Function `midtrans` tiruan (lihat supabase/functions/midtrans/index.ts).
+const midKunci = new Map(); // owner -> { kunci, aktif }
+const midBayar = new Map(); // order_id -> { owner, sumber, ref, jumlah, status, diproses }
+let midNomor = 0;
 const refresh = new Map(); // refresh token -> user id
 let nomorRefresh = 0;
 const norm = (s) => s.replace(/\u00a0/g, ' ');
@@ -136,6 +140,46 @@ async function mock(route) {
     const out = [...penjualan.values()].filter((j) => j.owner_id === uid && j.owner_id === eq('owner_id') && !j.diproses);
     out.forEach((j) => { j.diproses = true; });
     return json(200, out.map(({ id, staff_id, data, created_at }) => ({ id, staff_id, data, created_at })));
+  }
+  if (url.pathname === '/functions/v1/midtrans') {
+    if (!uid) return json(401, { error: 'masuk' });
+    const body = JSON.parse(req.postData() || '{}');
+    const st = staff.find((x) => x.staff_id === uid);
+    const owner = st ? st.owner_id : uid;
+    const k = midKunci.get(owner);
+    const info = (x) => ({ terhubung: !!x, aktif: !!(x && x.aktif), uji: !!(x && /^SB-/.test(x.kunci)) });
+    const baru = (isi) => { const id = 'KL-E2E-' + (++midNomor); midBayar.set(id, Object.assign({ owner, status: 'pending', diproses: false }, isi)); return id; };
+    const milik = (id) => { const b = midBayar.get(id); return b && b.owner === owner ? b : null; };
+    switch (body.aksi) {
+      case 'cek': return json(200, info(k));
+      case 'simpan':
+        if (st) return json(403, { error: 'owner' });
+        if (!/^(SB-)?Mid-server-[\w-]{8,}$/.test(String(body.serverKey || '').trim())) return json(400, { error: 'format', pesan: 'Server Key tidak sesuai format' });
+        if (/salah/.test(body.serverKey)) return json(400, { error: 'kunci-salah', pesan: 'Server Key ditolak Midtrans' });
+        midKunci.set(owner, { kunci: body.serverKey.trim(), aktif: true });
+        return json(200, info(midKunci.get(owner)));
+      case 'aktif': k.aktif = !!body.aktif; return json(200, info(k));
+      case 'hapus': midKunci.delete(owner); return json(200, info(null));
+      case 'qris': {
+        if (!k || !k.aktif) return json(409, { error: 'mati' });
+        const id = baru({ sumber: 'kasir', jumlah: body.jumlah });
+        return json(200, { order_id: id, qr: '00020101021226-MIDTRANS-' + id, kedaluwarsa: new Date(Date.now() + 900000).toISOString(), uji: true });
+      }
+      case 'status': { const b = milik(body.order_id); return b ? json(200, { status: b.status, metode: 'qris/gopay' }) : json(404, { error: 'tidak-ada' }); }
+      case 'batal': { const b = milik(body.order_id); if (b && b.status === 'pending') b.status = 'batal'; return json(200, { status: b ? b.status : 'batal' }); }
+      case 'link': {
+        if (st) return json(403, { error: 'owner' });
+        const ada = [...midBayar.entries()].find(([, b]) => b.owner === owner && b.ref === body.ref && b.jumlah === body.jumlah && b.status === 'pending');
+        const id = ada ? ada[0] : baru({ sumber: 'tagihan', ref: body.ref, jumlah: body.jumlah, hari: body.hari });
+        return json(200, { link: 'https://app.sandbox.midtrans.com/snap/v4/redirection/' + id, order_id: id });
+      }
+      case 'ambil': {
+        const out = [...midBayar.entries()].filter(([, b]) => b.owner === owner && b.sumber === 'tagihan' && b.status === 'lunas' && !b.diproses);
+        out.forEach(([, b]) => { b.diproses = true; });
+        return json(200, { bayar: out.map(([id, b]) => ({ order_id: id, ref: b.ref, jumlah: b.jumlah, metode: 'qris/dana', dibayar: new Date().toISOString() })) });
+      }
+      default: return json(400, { error: 'aksi tidak dikenal' });
+    }
   }
   return route.fulfill({ status: 404, headers: cors, body: '{}' });
 }
@@ -967,7 +1011,102 @@ async function tab(ctx, errors) {
   await v.waitForSelector('#qrisGambar[data-terisi=""]');
   assert.equal(await v.locator('#qrisTerisi').count(), 0);
 
-  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors, hpVarian.errors), []);
+  // 27. QRIS Midtrans: owner menghubungkan Midtrans; kasir owner dan staff lunas otomatis; tagihan membawa link bayar.
+  const hpOwner = await device(browser);
+  const o = hpOwner.page;
+  await o.click('nav >> text=Akun');
+  await bukaLipat(o);
+  await o.fill('input[name=email]', USER.email);
+  await o.fill('input[name=password]', 'rahasia123');
+  await o.click('#formAuth button');
+  await o.waitForFunction(() => document.querySelector('#syncBadge').textContent === 'Tersimpan');
+  await bukaLipat(o);
+  await o.waitForSelector('#midtransSetel [data-act=midtrans-hubungkan]');
+  await o.click('#midtransSetel [data-act=midtrans-hubungkan]');
+  await o.fill('#midtransKunci', 'Mid-client-abcdefghijk');
+  await o.click('#formMidtrans button[type=submit]');
+  await o.waitForSelector('#midtransMsg .msg.err');
+  assert.ok(norm(await o.textContent('#midtransMsg')).includes('bukan Client Key'));
+  await o.fill('#midtransKunci', 'SB-Mid-server-abcdefghijk');
+  await o.click('#formMidtrans button[type=submit]');
+  await o.waitForSelector('#midtransTerhubung');
+  assert.ok(norm(await o.textContent('#midtransTerhubung')).includes('Sandbox'));
+  assert.equal(midKunci.get(USER.id).kunci, 'SB-Mid-server-abcdefghijk');
+  // Kunci tidak disimpan di HP.
+  assert.ok(!(await o.evaluate(() => JSON.stringify(localStorage))).includes('Mid-server'));
+  const tileBiasa = '.tile:not(:has-text("Ada pilihan")) >> nth=0';
+  const jumlahTrx = (pg) => pg.evaluate(() => Kelola.store.list('transaksi').length);
+  // Kasir owner: QR Midtrans, lalu pembeli membayar.
+  await o.click('nav >> text=Kasir');
+  await o.click(tileBiasa);
+  await o.click('#metodeBayar >> text=QRIS');
+  await o.click('[data-act=qris]');
+  await o.waitForSelector('#qrisKasir[data-midtrans] #qrisStatus');
+  const order1 = await o.getAttribute('#qrisKasir', 'data-midtrans');
+  assert.equal(midBayar.get(order1).owner, USER.id);
+  const trxAwal = await jumlahTrx(o);
+  midBayar.get(order1).status = 'lunas';
+  await o.waitForSelector('#bayarDiterima', { timeout: 10000 });
+  assert.ok(norm(await o.textContent('#bayarDiterima')).includes('QRIS · GoPay'));
+  assert.equal(await jumlahTrx(o), trxAwal + 1);
+  const trxMid = await o.evaluate((o) => Kelola.store.list('transaksi').find((r) => r.data.midtrans === o), order1);
+  assert.ok(trxMid && trxMid.data.metode === 'qris', 'penjualan tersimpan sebagai QRIS');
+  await o.click('#bayarDiterima >> text=Penjualan baru');
+  // Kasir menutup QR sebelum dibayar: QR dibatalkan, tidak ada penjualan.
+  await o.click(tileBiasa);
+  await o.click('#metodeBayar >> text=QRIS');
+  await o.click('[data-act=qris]');
+  await o.waitForSelector('#qrisKasir[data-midtrans] #qrisStatus');
+  const order2 = await o.getAttribute('#qrisKasir', 'data-midtrans');
+  await o.click('#qrisKasir >> text=Batalkan');
+  for (let i = 0; i < 50 && midBayar.get(order2).status !== 'batal'; i++) await o.waitForTimeout(100);
+  assert.equal(midBayar.get(order2).status, 'batal');
+  assert.equal(await jumlahTrx(o), trxAwal + 1);
+  // Kasir staff memakai Midtrans milik owner.
+  await s.bringToFront();
+  await s.click('nav >> text=Kasir');
+  // Uji sebelumnya mengeluarkan Budi dari staff; daftarkan lagi sebagai staff owner ini.
+  if (!staff.some((x) => x.staff_id === STAFF.id)) staff.push({ staff_id: STAFF.id, owner_id: USER.id, nama: 'Budi', created_at: new Date().toISOString() });
+  // Status Midtrans di HP staff diperiksa lagi setelah beberapa saat.
+  await s.evaluate(() => { if (Kelola.ui.midtrans) Kelola.ui.midtrans.waktu = 0; });
+  await s.click(tileBiasa);
+  await s.click('#metodeBayar >> text=QRIS');
+  await s.waitForSelector('text=QRIS Midtrans: penjualan tersimpan otomatis');
+  await s.click('[data-act=qris]');
+  await s.waitForSelector('#qrisKasir[data-midtrans] #qrisStatus');
+  const order3 = await s.getAttribute('#qrisKasir', 'data-midtrans');
+  assert.equal(midBayar.get(order3).owner, USER.id, 'QR dibuat dengan Midtrans owner');
+  midBayar.get(order3).status = 'lunas';
+  await s.waitForSelector('#bayarDiterima', { timeout: 10000 });
+  await s.click('#bayarDiterima >> text=Penjualan baru');
+  // Tagihan: pesan WA membawa link bayar Midtrans; pembayaran lewat link melunasi tagihan.
+  await o.bringToFront();
+  await o.click(tileBiasa);
+  await o.click('#metodeBayar >> text=Bayar nanti');
+  await o.fill('#pelangganNama', 'Pak Joko');
+  await o.click('text=Simpan & tagih');
+  await o.waitForSelector('#dialogTagih .pesan-wa');
+  const pesanWa = await o.textContent('#dialogTagih .pesan-wa');
+  const linkBayar = pesanWa.match(/https:\/\/app\.sandbox\.midtrans\.com\/\S+/);
+  assert.ok(linkBayar && pesanWa.includes('Bayar online'), pesanWa);
+  await o.click('#dialogTagih >> text=Nanti saja');
+  const order4 = linkBayar[0].split('/').pop();
+  const joko = await o.evaluate(() => Kelola.store.list('transaksi').find((r) => r.data.pelanggan && r.data.pelanggan.nama === 'Pak Joko'));
+  assert.equal(midBayar.get(order4).ref, joko.id);
+  assert.equal(midBayar.get(order4).jumlah, joko.data.total);
+  midBayar.get(order4).status = 'lunas';
+  await o.click('nav >> text=Akun');
+  await bukaLipat(o);
+  await o.click('[data-act=sinkron]');
+  await o.waitForFunction((id) => { const r = Kelola.store.get(id); return r && r.data.lunas; }, joko.id, { timeout: 10000 });
+  const bayarJoko = await o.evaluate((id) => Kelola.store.get(id).data.dibayar, joko.id);
+  assert.deepEqual(bayarJoko.map((b) => [b.metode, b.midtrans]), [['qris', order4]]);
+  // Dimatikan: kasir kembali ke QRIS biasa.
+  await o.click('#midtransSetel [data-act=midtrans-aktif][data-v=""]');
+  await o.waitForFunction(() => Kelola.ui.midtrans && Kelola.ui.midtrans.aktif === false);
+  assert.equal(midKunci.get(USER.id).aktif, false);
+
+  assert.deepEqual(hp.errors.concat(laptop.errors, hpStaff.errors, baru.errors, hpVarian.errors, hpOwner.errors), []);
   await browser.close();
   console.log('E2E OK');
 })().catch((e) => { console.error(e); console.error(log.slice(-15).join('\n')); process.exit(1); });
