@@ -163,7 +163,7 @@ async function mock(route) {
       case 'qris': {
         if (!k || !k.aktif) return json(409, { error: 'mati' });
         const id = baru({ sumber: 'kasir', jumlah: body.jumlah });
-        return json(200, { order_id: id, qr: '00020101021226-MIDTRANS-' + id, kedaluwarsa: new Date(Date.now() + 900000).toISOString(), uji: true });
+        return json(200, { order_id: id, qr: '00020101021226-MIDTRANS-' + id, kedaluwarsa: new Date(Date.now() + 900000).toISOString(), uji: true, gambar: 'https://api.sandbox.midtrans.com/v2/qris/' + id + '/qr-code' });
       }
       case 'status': { const b = milik(body.order_id); return b ? json(200, { status: b.status, metode: 'qris/gopay' }) : json(404, { error: 'tidak-ada' }); }
       case 'batal': { const b = milik(body.order_id); if (b && b.status === 'pending') b.status = 'batal'; return json(200, { status: b ? b.status : 'batal' }); }
@@ -1044,6 +1044,7 @@ async function tab(ctx, errors) {
   await o.waitForSelector('#qrisKasir[data-midtrans] #qrisStatus');
   const order1 = await o.getAttribute('#qrisKasir', 'data-midtrans');
   assert.equal(midBayar.get(order1).owner, USER.id);
+  assert.equal(await o.inputValue('#qrisLinkUji'), 'https://api.sandbox.midtrans.com/v2/qris/' + order1 + '/qr-code');
   const trxAwal = await jumlahTrx(o);
   midBayar.get(order1).status = 'lunas';
   await o.waitForSelector('#bayarDiterima', { timeout: 10000 });

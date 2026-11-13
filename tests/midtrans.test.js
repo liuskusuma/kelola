@@ -59,7 +59,7 @@ function dunia() {
       if (u.pathname === '/v2/charge') {
         const id = body.transaction_details.order_id;
         mt.set(id, { transaction_status: 'pending', gross_amount: `${body.transaction_details.gross_amount}.00`, payment_type: 'qris' });
-        return balas(201, { status_code: '201', transaction_status: 'pending', qr_string: `000201QR-${id}`, expiry_time: '2026-11-13 12:15:00' });
+        return balas(201, { status_code: '201', transaction_status: 'pending', qr_string: `000201QR-${id}`, expiry_time: '2026-11-13 12:15:00', actions: [{ name: 'generate-qr-code', method: 'GET', url: `https://api.sandbox.midtrans.com/v2/qris/${id}/qr-code` }] });
       }
       if (u.pathname === '/snap/v1/transactions') {
         return balas(201, { token: 'tk', redirect_url: `https://app.sandbox.midtrans.com/snap/v4/redirection/${body.transaction_details.order_id}` });
@@ -135,6 +135,7 @@ test('kasir staff: buat QRIS, tunggu, lunas otomatis', async () => {
   const q = await kirim(STAFF, { aksi: 'qris', jumlah: 45000 });
   assert.equal(q.status, 200);
   assert.ok(q.data.qr.startsWith('000201'));
+  assert.match(q.data.gambar, /\/qr-code$/, 'mode uji: link gambar QR untuk simulator');
   const charge = d.panggilan.find((p) => p.alamat.endsWith('/v2/charge'));
   assert.equal(charge.alamat, 'https://api.sandbox.midtrans.com/v2/charge');
   assert.equal(charge.body.transaction_details.gross_amount, 45000);
