@@ -241,7 +241,7 @@
     details.lipat > summary::-webkit-details-marker { display: none; }
     details.lipat > summary::after { content: '›'; font-size: 20px; line-height: 1; transform: rotate(90deg); transition: transform .15s; }
     details.lipat[open] > summary::after { transform: rotate(-90deg); }
-    .pesan-wa { white-space: pre-wrap; font: inherit; font-size: 14px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 16px; padding: 12px 14px; margin: 0; max-height: 40vh; overflow: auto; }
+    .pesan-wa { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; background: var(--well); box-shadow: var(--inset-sm); border-radius: 16px; padding: 12px 14px; margin: 0; max-height: 40vh; overflow: auto; }
     .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
     .swatch { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--cell); box-shadow: var(--raised-sm); cursor: pointer; padding: 0; }
     .swatch.bawaan { background: linear-gradient(135deg, #0a2a6e 50%, #fecb10 50%); }
@@ -282,6 +282,14 @@
     .msg { font-size: 14px; padding: 10px 14px; border-radius: 16px; }
     .msg.err { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
     .msg.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+    /* QRIS Midtrans: menunggu pembayaran dan tanda lunas */
+    .tunggu-bayar { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 600; color: var(--muted); padding: 6px 0; }
+    .putar { width: 16px; height: 16px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--muted) 35%, transparent); border-top-color: var(--primary); animation: putar 0.9s linear infinite; }
+    @keyframes putar { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .putar { animation: none; } }
+    .tengah { text-align: center; }
+    .centang { width: 72px; height: 72px; border-radius: 50%; margin: 8px auto 0; display: grid; place-items: center; font-size: 38px; font-weight: 700; color: #fff; background: var(--ok); }
+    .langkah-midtrans { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 
     /* Ringkasan keranjang di atas tab bar */
     #summary {

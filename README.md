@@ -60,6 +60,16 @@ Pengingat di dalam aplikasi langsung jalan tanpa persiapan. Supaya HP juga mener
 2. **Edge Functions → Deploy a new function → Via Editor**. Beri nama `pengingat-tagihan`, hapus contoh kode, tempel seluruh isi [`supabase/functions/pengingat-tagihan/index.ts`](supabase/functions/pengingat-tagihan/index.ts), lalu **Deploy**. Tidak perlu mengisi rahasia apa pun.
 3. Di HP owner: buka Kelola (di iPhone harus dari ikon di Layar Utama), **Akun → Cara bayar & tagihan → Nyalakan notifikasi**, lalu **Kirim uji**.
 
+### Menyiapkan QRIS Midtrans (sekali saja)
+
+Supaya client bisa memilih QRIS Midtrans (nominal terisi dan tanda lunas otomatis). Kak Lius tidak perlu mendaftar ke Midtrans; setiap client mendaftar akun Midtrans sendiri dan menanggung biayanya (sekitar 0,7% per transaksi QRIS).
+
+1. **SQL Editor → New query**, tempel isi [`supabase/midtrans.sql`](supabase/midtrans.sql), lalu **Run**. Aman dijalankan ulang.
+2. **Edge Functions → Deploy a new function → Via Editor**. Beri nama `midtrans`, hapus contoh kode, tempel seluruh isi [`supabase/functions/midtrans/index.ts`](supabase/functions/midtrans/index.ts), lalu **Deploy**. Tidak perlu mengisi rahasia apa pun.
+3. Client membuka **Akun → Cara bayar & tagihan → QRIS Midtrans → Hubungkan Midtrans**, lalu menempel **Server Key** dari Dashboard Midtrans (**Settings → Access Keys**). Untuk mencoba tanpa uang sungguhan, pakai Server Key Sandbox (diawali `SB-`) dan bayar lewat [simulator Midtrans](https://simulator.sandbox.midtrans.com/).
+
+Tidak perlu mengisi Notification URL di Midtrans: Kelola menanyakan status pembayaran sendiri. Pembayaran tagihan lewat link tercatat saat HP owner sinkron (aplikasi dibuka).
+
 Opsional: kalau ingin pengguna langsung bisa masuk tanpa konfirmasi email, matikan **Authentication → Providers → Email → Confirm email**.
 
 ## Hosting
@@ -89,6 +99,7 @@ Setiap kali mengubah file aplikasi, naikkan `VERSION` di `sw.js` supaya HP pengg
 | `supabase/staff.sql` | Tabel dan fungsi untuk akun staff |
 | `supabase/notifikasi.sql` | Tabel dan jadwal harian untuk notifikasi pengingat tagihan |
 | `supabase/functions/pengingat-tagihan/` | Edge Function yang mengirim notifikasi pengingat (Web Push) |
+| `supabase/midtrans.sql`, `supabase/functions/midtrans/` | Tabel dan Edge Function QRIS Midtrans (Server Key client hanya di server) |
 | `vendor/` | Pustaka supabase-js 2.45.4 dan huruf Exo 2 (disimpan lokal supaya jalan offline) |
 | `icons/logo.png` | Logo Kelola (K putih dan kuning di atas navy, sudut transparan); `logo-asli.jpg` adalah file aslinya, `icon-*.png` ikon layar utama |
 | `sw.js`, `manifest.webmanifest`, `icons/icon-*.png` | Supaya bisa dipasang di layar utama dan jalan offline |
