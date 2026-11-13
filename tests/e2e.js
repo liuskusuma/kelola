@@ -154,7 +154,7 @@ async function mock(route) {
       case 'cek': return json(200, info(k));
       case 'simpan':
         if (st) return json(403, { error: 'owner' });
-        if (!/^(SB-)?Mid-server-[\w-]{8,}$/.test(String(body.serverKey || '').trim())) return json(400, { error: 'format', pesan: 'Server Key tidak sesuai format' });
+        if (!/^\S{16,300}$/.test(String(body.serverKey || '').trim()) || /^(SB-)?Mid-client-/i.test(String(body.serverKey).trim())) return json(400, { error: 'format', pesan: 'Server Key tidak sesuai format' });
         if (/salah/.test(body.serverKey)) return json(400, { error: 'kunci-salah', pesan: 'Server Key ditolak Midtrans' });
         midKunci.set(owner, { kunci: body.serverKey.trim(), aktif: true });
         return json(200, info(midKunci.get(owner)));
@@ -1027,11 +1027,11 @@ async function tab(ctx, errors) {
   await o.click('#formMidtrans button[type=submit]');
   await o.waitForSelector('#midtransMsg .msg.err');
   assert.ok(norm(await o.textContent('#midtransMsg')).includes('bukan Client Key'));
-  await o.fill('#midtransKunci', 'SB-Mid-server-abcdefghijk');
+  await o.fill('#midtransKunci', 'SB-Mid-server-eV9.abcdefghijk');
   await o.click('#formMidtrans button[type=submit]');
   await o.waitForSelector('#midtransTerhubung');
   assert.ok(norm(await o.textContent('#midtransTerhubung')).includes('Sandbox'));
-  assert.equal(midKunci.get(USER.id).kunci, 'SB-Mid-server-abcdefghijk');
+  assert.equal(midKunci.get(USER.id).kunci, 'SB-Mid-server-eV9.abcdefghijk');
   // Kunci tidak disimpan di HP.
   assert.ok(!(await o.evaluate(() => JSON.stringify(localStorage))).includes('Mid-server'));
   const tileBiasa = '.tile:not(:has-text("Ada pilihan")) >> nth=0';

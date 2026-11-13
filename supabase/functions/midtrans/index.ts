@@ -23,8 +23,13 @@ const SNAP = { uji: 'https://app.sandbox.midtrans.com/snap/v1/transactions', asl
 const MAKS_JUMLAH = 1000000000;
 
 // Server Key sandbox diawali "SB-Mid-server-", yang asli "Mid-server-".
+// Isi setelah awalan bisa memuat titik dan tanda lain (kunci dari dashboard baru), jadi
+// yang ditolak di sini hanya teks yang jelas bukan Server Key; sisanya dicek Midtrans.
 export const modeUji = (kunci) => /^SB-/i.test(String(kunci || '').trim());
-export const kunciSah = (kunci) => /^(SB-)?Mid-server-[A-Za-z0-9_-]{8,}$/.test(String(kunci || '').trim());
+export const kunciSah = (kunci) => {
+  const k = String(kunci || '').trim();
+  return /^\S{16,300}$/.test(k) && !/^(SB-)?Mid-client-/i.test(k);
+};
 
 // Status transaksi Midtrans -> status Kelola.
 export function statusDari(t) {
